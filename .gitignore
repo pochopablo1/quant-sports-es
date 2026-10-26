@@ -1,0 +1,17 @@
+# Protección estricta de claves privadas y variables de entorno
+.env
+*.env
+*.pem
+*.key
+*wallet*secret*
+
+# Entorno virtual y caché de Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Bases de datos locales y logs temporales
+*.db
+*.sqlite3
+*.log

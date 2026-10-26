@@ -1,0 +1,44 @@
+name: Motor Cuantitativo Deportes (Simulacion 24/7)
+
+on:
+  schedule:
+    # Ejecuta cada 15 minutos automaticamente en la nube de GitHub
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Permite ejecutarlo manualmente con 1 clic desde GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  escanear_y_simular:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar barrido en vivo y verificador de Orderbook
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          SX_API_KEY: ${{ secrets.SX_API_KEY }}
+          ODDS_API_KEYS: ${{ secrets.ODDS_API_KEYS }}
+          EJECUCION_REAL_HABILITADA: 'false'
+        run: |
+          python daemon_24_7.py --max-ciclos 1 --meta-diaria 200 --horas-telegram 0.01
+
+      - name: Guardar historial actualizado en el repositorio
+        run: |
+          git config user.name "Bot Cuantitativo"
+          git config user.email "bot@users.noreply.github.com"
+          git add datos/historial_ejecuciones.csv datos/oportunidades_accionables.csv
+          git diff --staged --quiet || git commit -m "Actualizar historial de simulacion en vivo [skip ci]"
+          git push
