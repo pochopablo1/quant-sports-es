@@ -175,6 +175,10 @@ def evaluar_apuesta_contra_marcador(
     mercado = str(fila.get("Mercado", ""))
     seleccion_raw = str(fila.get("Seleccion", ""))
     seleccion_limpia = seleccion_raw.split(" (Prob:")[0].strip()
+    if seleccion_limpia.lower() == "los angeles l":
+        seleccion_limpia = "Los Angeles Lakers"
+    elif seleccion_limpia.lower() == "los angeles c":
+        seleccion_limpia = "LA Clippers"
     stake = float(fila.get("Stake_USD", 0.0))
     cuota = float(fila.get("Cuota_VWAP_Real_Libro", 1.0))
 
@@ -363,7 +367,22 @@ def ejecutar_auditoria_real() -> None:
         por_motor["WinRate_Pct"] = ((por_motor["Ganadas"] / por_motor["Resueltas"]) * 100.0).round(1)
         print(por_motor.to_string(index=False))
 
-        # --- AUDITORÍA DEL MOTOR GANADOR V2 (Reglas calibradas: Cuota <= 1.98 + Surebets + 1 sola apuesta por Evento) ---
+        # --- AUDITORÍA DEL MOTOR GANADOR V2 (Solo Motor 1 + Motor 2, con Motor 3 apagado) ---
+        sin_motor3 = resueltas[resueltas["Estrategia"].isin(["MOTOR_1_VALUE_FAVORITO", "MOTOR_2_SUREBET"])].copy()
+        if not sin_motor3.empty:
+            m12_ganadas = sin_motor3[sin_motor3["Resultado_Partido_Real"].str.startswith("GANADA")]
+            m12_cap = sin_motor3["Stake_USD"].sum()
+            m12_pnl = sin_motor3["PnL_Si_Mantenes_Al_Final_USD"].sum()
+            m12_wr = (len(m12_ganadas) / len(sin_motor3)) * 100.0
+            print("\n" + "═" * 108)
+            print("💎 RENDIMIENTO REAL DE MOTOR 1 + MOTOR 2 (CON MOTOR 3 DESACTIVADO):")
+            print(
+                f"   🎯 Total Apuestas Resueltas: {len(sin_motor3)} | "
+                f"✅ Ganadas: {len(m12_ganadas)} ({m12_wr:.1f}% Win Rate) | "
+                f"💵 Capital: ${m12_cap:.2f} USD | "
+                f"💰 GANANCIA NETA REAL: {m12_pnl:+.2f} USD ({(m12_pnl/m12_cap*100):+.2f}% ROI Real)"
+            )
+
         v2_candidatas = resueltas[
             ((resueltas["Estrategia"] == "MOTOR_1_VALUE_FAVORITO") & (resueltas["Cuota_Viva"] <= 1.98))
             | (resueltas["Estrategia"] == "MOTOR_2_SUREBET")
@@ -374,10 +393,8 @@ def ejecutar_auditoria_real() -> None:
             v2_cap = v2_candidatas["Stake_USD"].sum()
             v2_pnl = v2_candidatas["PnL_Si_Mantenes_Al_Final_USD"].sum()
             v2_wr = (len(v2_ganadas) / len(v2_candidatas)) * 100.0
-            print("\n" + "═" * 108)
-            print("💎 RENDIMIENTO DEL NUEVO 'MOTOR GANADOR V2' (EN LOS MISMOS PARTIDOS OFICIALES):")
-            print("   Reglas V2: (1) Favoritos Reales Cuota <= 1.98 + Surebets | (2) Candado 1 sola apuesta única por partido")
             print("─" * 108)
+            print("💎 FILTRO ESTRICTO 'MOTOR GANADOR V2' (Cuota <= 1.98 + Surebets + 1 sola apuesta única por partido):")
             print(
                 f"   🎯 Partidos únicos jugados : {len(v2_candidatas)} | "
                 f"✅ Ganados: {len(v2_ganadas)} ({v2_wr:.1f}% Win Rate) | "

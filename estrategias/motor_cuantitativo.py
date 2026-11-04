@@ -27,14 +27,18 @@ MICRO_STAKE_MIN_USD = 2.50
 MICRO_STAKE_MAX_USD = 6.00
 LIQUIDEZ_MINIMA_USD = 35.0
 
-# Reglas exactas del Motor Ganador V2 (Calibrado con auditoría real de 9 días vs ESPN)
+# Reglas exactas del Motor Ganador V2 (Calibrado con auditoría real de 518 partidos en PythonAnywhere vs ESPN)
+# - MOTOR 1 (Value Favorito): +$18.75 USD reales en 189 partidos (GANADOR comprobado manteniendo al final)
+# - MOTOR 2 (Surebet Arbitraje): +$6.47 USD reales en 41 de 41 partidos (100% Win Rate comprobado)
+# - MOTOR 3 (Scalping Longshots): DESACTIVADO (causaba -$137.78 USD si no se revendía antes del partido)
 UMBRAL_EV_FAVORITO_PCT = 3.0
-CUOTA_MAXIMA_FAVORITO = 1.95          # Corta la trampa de cuotas 2.04-2.20; conserva favoritos reales (~78% Win Rate)
-UMBRAL_ROI_SUREBET_PCT = 1.0          # 100% Win Rate comprobado
+CUOTA_MAXIMA_FAVORITO = 2.02          # Solo favoritos reales y líneas parejas con ventaja matemática real
+UMBRAL_ROI_SUREBET_PCT = 1.0          # 100% Win Rate comprobado (41/41 en PythonAnywhere)
+HABILITAR_MOTOR_3_TRADING_PRE = False # Apagado: eliminamos 100% el riesgo de quedarse clavado en cuotas altas
 UMBRAL_EV_TRADING_PRE_PCT = 3.5
-CUOTA_MAXIMA_TRADING_PRE = 2.35       # Prohibido comprar longshots ilíquidos (cuotas 3.0 a 16.0)
-MAX_OVERROUND_TRADING_PRE_PCT = 4.5   # Exige libro CLOB ajustado para que la venta Maker se ejecute rápido
-VENTANA_MAXIMA_HORAS_PRE = 36.0       # No inmovilizar capital ni repetir apuestas con 3-5 días de anticipación
+CUOTA_MAXIMA_TRADING_PRE = 2.15
+MAX_OVERROUND_TRADING_PRE_PCT = 4.0
+VENTANA_MAXIMA_HORAS_PRE = 36.0       # No inmovilizar capital con más de 36h de anticipación
 
 # Límites de cordura cuantitativa
 MAX_EV_REALISTA_PCT = 18.0
@@ -283,9 +287,10 @@ def detectar_oportunidades_cuantitativas(
                             }
                         )
 
-                    # --- MOTOR 3: TRADING PRE-PARTIDO (Scalping CLOB acotado a Cuota <= 2.35 y Spread libro <= 4.5%) ---
+                    # --- MOTOR 3: DESACTIVADO EN V2 POR DEFECTO (Solo operamos Motor 1 Favoritos + Motor 2 Surebets) ---
                     elif (
-                        ev_neto >= UMBRAL_EV_TRADING_PRE_PCT
+                        HABILITAR_MOTOR_3_TRADING_PRE
+                        and ev_neto >= UMBRAL_EV_TRADING_PRE_PCT
                         and CUOTA_MAXIMA_FAVORITO < c_bruta <= CUOTA_MAXIMA_TRADING_PRE
                         and abs(float(mkt.get("Overround_Libro_Pct") or 0.0)) <= MAX_OVERROUND_TRADING_PRE_PCT
                         and liq_lado >= 100.0

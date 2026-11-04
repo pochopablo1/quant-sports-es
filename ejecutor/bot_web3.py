@@ -303,8 +303,8 @@ def ejecutar_barrido_oportunidades(
                 prob_justa = 1.0 / cuota_justa
                 if "MOTOR_1_VALUE_FAVORITO" in estrategia:
                     ev_vivo_pct = round(((cuota_vwap * prob_justa) - 1.0) * 100.0, 2)
-                    if cuota_vwap > 1.98:
-                        estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 1.98 tope Favorito Real V2)"
+                    if cuota_vwap > 2.02:
+                        estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 2.02 tope Favorito Real V2)"
                     elif ev_vivo_pct >= 2.8:
                         if not modo_simulacion and plat == "Polymarket":
                             partes_tok = str(id_mkt).split("::")
@@ -318,34 +318,8 @@ def ejecutar_barrido_oportunidades(
                     else:
                         estado = f"DESCARTADA_POR_SLIPPAGE (EV vivo bajó a {ev_vivo_pct}%)"
                 else:
-                    # MOTOR 3: Trading Pre-Partido V2 (tope estricto Cuota_VWAP <= 2.35, prohibido longshots)
-                    precio_compra_vivo = 1.0 / cuota_vwap
-                    precio_venta_maker = round(prob_justa * 0.99, 4)
-                    ev_vivo_pct = round(((precio_venta_maker / precio_compra_vivo) - 1.0) * 100.0, 2)
-                    if cuota_vwap > 2.35:
-                        estado = f"DESCARTADA_LONGSHOT_V2 (Cuota {cuota_vwap} > 2.35)"
-                    elif ev_vivo_pct >= 2.5:
-                        if not modo_simulacion and plat == "Polymarket":
-                            partes_tok = str(id_mkt).split("::")
-                            tok_id = partes_tok[1] if int(idx_lado) == 1 else partes_tok[2]
-                            ok_buy, msg_buy = firmar_orden_polymarket_clob(
-                                tok_id, precio_compra_vivo, stake_usd, lado="BUY", tipo_orden="FOK"
-                            )
-                            if ok_buy:
-                                ok_sell, msg_sell = firmar_orden_polymarket_clob(
-                                    tok_id, precio_venta_maker, stake_usd, lado="SELL", tipo_orden="GTC"
-                                )
-                                estado = (
-                                    "SCALPING_REAL_COMPRA+MAKER_SELL_OK"
-                                    if ok_sell
-                                    else f"COMPRA_REAL_OK_PENDIENTE_SELL ({msg_sell})"
-                                )
-                            else:
-                                estado = f"FALLO_SCALPING_REAL ({msg_buy})"
-                        else:
-                            estado = "SCALPING_COMPRA+MAKER_SELL_ACTIVO (PAPER)" if modo_simulacion else "LISTA_SCALPING_CLOB"
-                    else:
-                        estado = f"DESCARTADA_SCALPING (ROI vivo bajó a {ev_vivo_pct}%)"
+                    estado = "DESCARTADA_MOTOR_3_DESACTIVADO_EN_V2"
+                    ev_vivo_pct = 0.0
 
         if any(k in estado for k in ("OK", "EJECUTAD", "ACTIVO")):
             claves_ejecutadas_historico.add(clave_unica)
