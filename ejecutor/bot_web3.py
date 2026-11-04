@@ -303,18 +303,21 @@ def ejecutar_barrido_oportunidades(
                 prob_justa = 1.0 / cuota_justa
                 if "MOTOR_1_VALUE_FAVORITO" in estrategia:
                     ev_vivo_pct = round(((cuota_vwap * prob_justa) - 1.0) * 100.0, 2)
-                    if cuota_vwap > 2.02:
-                        estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 2.02 tope Favorito Real V2)"
+                    if cuota_vwap > 2.10:
+                        estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 2.10 tope Favorito Real V2)"
                     elif ev_vivo_pct >= 2.8:
-                        if not modo_simulacion and plat == "Polymarket":
-                            partes_tok = str(id_mkt).split("::")
-                            tok_id = partes_tok[1] if int(idx_lado) == 1 else partes_tok[2]
-                            ok_real, msg_real = firmar_orden_polymarket_clob(
-                                tok_id, 1.0 / cuota_vwap, stake_usd, lado="BUY", tipo_orden="FOK"
-                            )
-                            estado = "ORDEN_REAL_FOK_EJECUTADA" if ok_real else f"FALLO_ORDEN_REAL ({msg_real})"
+                        if not modo_simulacion:
+                            if plat == "Polymarket":
+                                partes_tok = str(id_mkt).split("::")
+                                tok_id = partes_tok[1] if int(idx_lado) == 1 else partes_tok[2]
+                                ok_real, msg_real = firmar_orden_polymarket_clob(
+                                    tok_id, 1.0 / cuota_vwap, stake_usd, lado="BUY", tipo_orden="GTC"
+                                )
+                                estado = "ORDEN_REAL_FOK_EJECUTADA" if ok_real else f"FALLO_ORDEN_REAL ({msg_real})"
+                            else:
+                                estado = f"OMITIDA_MODO_REAL_SOLO_POLYMARKET ({plat})"
                         else:
-                            estado = "FAVORITO_EJECUTADO_OK (PAPER)" if modo_simulacion else "LISTA_ORDEN_FAVORITO_FOK"
+                            estado = "FAVORITO_EJECUTADO_OK (PAPER)"
                     else:
                         estado = f"DESCARTADA_POR_SLIPPAGE (EV vivo bajó a {ev_vivo_pct}%)"
                 else:

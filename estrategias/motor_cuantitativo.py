@@ -32,13 +32,13 @@ LIQUIDEZ_MINIMA_USD = 35.0
 # - MOTOR 2 (Surebet Arbitraje): +$6.47 USD reales en 41 de 41 partidos (100% Win Rate comprobado)
 # - MOTOR 3 (Scalping Longshots): DESACTIVADO (causaba -$137.78 USD si no se revendía antes del partido)
 UMBRAL_EV_FAVORITO_PCT = 3.0
-CUOTA_MAXIMA_FAVORITO = 2.02          # Solo favoritos reales y líneas parejas con ventaja matemática real
+CUOTA_MAXIMA_FAVORITO = 2.09          # Incluye líneas principales (1.90 a 2.08) + favoritos de fútbol/tenis/NBA
 UMBRAL_ROI_SUREBET_PCT = 1.0          # 100% Win Rate comprobado (41/41 en PythonAnywhere)
 HABILITAR_MOTOR_3_TRADING_PRE = False # Apagado: eliminamos 100% el riesgo de quedarse clavado en cuotas altas
 UMBRAL_EV_TRADING_PRE_PCT = 3.5
 CUOTA_MAXIMA_TRADING_PRE = 2.15
 MAX_OVERROUND_TRADING_PRE_PCT = 4.0
-VENTANA_MAXIMA_HORAS_PRE = 36.0       # No inmovilizar capital con más de 36h de anticipación
+VENTANA_MAXIMA_HORAS_PRE = 120.0      # Permite ver partidos del fin de semana (el candado histórico impide repetir partido)
 
 # Límites de cordura cuantitativa
 MAX_EV_REALISTA_PCT = 18.0

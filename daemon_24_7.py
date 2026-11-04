@@ -14,10 +14,13 @@ Características de seguridad y ahorro de tokens:
 import argparse
 from datetime import datetime, timezone
 import logging
+import os
 import sys
 import time
+from dotenv import load_dotenv
 import pandas as pd
 
+from configuracion import RUTA_BASE
 from main import ejecutar_pipeline
 from ejecutor.bot_web3 import ejecutar_barrido_oportunidades, RUTA_HISTORIAL_EJECUCIONES
 from ver_estado_hoy import generar_texto_resumen_telegram_hoy
@@ -50,7 +53,7 @@ def calcular_capital_rotado_hoy() -> float:
 
 def iniciar_daemon(
     intervalo_minutos: float = 5.0,
-    meta_diaria_usd: float = 200.0,
+    meta_diaria_usd: float = 90.0,
     max_ciclos: int = 0,
     solo_local: bool = False,
     intervalo_telegram_horas: float = 2.0,
@@ -62,10 +65,16 @@ def iniciar_daemon(
 
     while True:
         ciclo += 1
+        load_dotenv(RUTA_BASE / ".env", override=True)
+        ejecucion_real = os.getenv("EJECUCION_REAL_HABILITADA", "false").lower() == "true"
+        modo_sim = not ejecucion_real
+        etiqueta_modo = "REAL ON-CHAIN (Polymarket)" if ejecucion_real else "SIMULACION (Paper)"
+
         capital_hoy = calcular_capital_rotado_hoy()
         logger.info(
-            "=== CICLO #%d | Capital rotado hoy: $%.2f / $%.2f USD ===",
+            "=== CICLO #%d [%s] | Capital rotado hoy: $%.2f / $%.2f USD ===",
             ciclo,
+            etiqueta_modo,
             capital_hoy,
             meta_diaria_usd,
         )
@@ -84,7 +93,7 @@ def iniciar_daemon(
             )
             resultados = ejecutar_barrido_oportunidades(
                 ev_minimo_pct=1.0,
-                modo_simulacion=True,
+                modo_simulacion=modo_sim,
                 max_ordenes=25,
             )
             aprobadas = [
@@ -122,7 +131,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Daemon 24/7 de Micro-Apuestas Cuantitativas ($2.50 a $6.00 USD)")
     parser.add_argument("--intervalo-minutos", type=float, default=5.0, help="Minutos entre cada barrido en vivo")
-    parser.add_argument("--meta-diaria", type=float, default=200.0, help="Presupuesto diario a rotar en USD")
+    parser.add_argument("--meta-diaria", type=float, default=90.0, help="Presupuesto diario a rotar en USD")
     parser.add_argument("--max-ciclos", type=int, default=1, help="Cantidad de ciclos a ejecutar (0 = infinito 24/7)")
     parser.add_argument("--solo-local", action="store_true", help="Usar cache local sin llamar APIs externas")
     parser.add_argument("--horas-telegram", type=float, default=2.0, help="Intervalo en horas para reporte en Telegram")

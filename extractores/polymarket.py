@@ -67,37 +67,48 @@ def parsear_campo_json(valor: Any) -> List[Any]:
     return []
 
 
-def extraer_polymarket(limite: int = 100) -> List[Dict[str, Any]]:
+def extraer_polymarket(limite: int = 100, paginas: int = 3) -> List[Dict[str, Any]]:
     """
-    Consulta los eventos deportivos activos en Polymarket y normaliza los mercados de 2 vías
-    al esquema estándar en español.
+    Consulta los eventos deportivos activos en Polymarket (hasta `paginas * limite` eventos)
+    y normaliza tanto mercados de 2 vías como fútbol 3-way (1X2) al esquema estándar en español.
     """
-    parametros = {
-        "active": "true",
-        "closed": "false",
-        "tag_slug": "sports",
-        "order": "volume24hr",
-        "ascending": "false",
-        "limit": str(limite),
-    }
-
     filas_normalizadas: List[Dict[str, Any]] = []
+    eventos: List[Dict[str, Any]] = []
+    ids_eventos_vistos = set()
 
-    eventos = None
-    for intento in range(3):
-        try:
-            respuesta = requests.get(URL_GAMMA_EVENTS, params=parametros, timeout=15)
-            respuesta.raise_for_status()
-            eventos = respuesta.json()
+    for pag in range(paginas):
+        parametros = {
+            "active": "true",
+            "closed": "false",
+            "tag_slug": "sports",
+            "order": "volume24hr",
+            "ascending": "false",
+            "limit": str(limite),
+            "offset": str(pag * limite),
+        }
+        lote = None
+        for intento in range(3):
+            try:
+                respuesta = requests.get(URL_GAMMA_EVENTS, params=parametros, timeout=15)
+                respuesta.raise_for_status()
+                lote = respuesta.json()
+                break
+            except Exception as exc:
+                if intento < 2:
+                    time.sleep(1.5)
+                else:
+                    logger.error("Error al consultar Polymarket Gamma API pág %d: %s", pag + 1, exc)
+        if not isinstance(lote, list) or not lote:
             break
-        except Exception as exc:
-            if intento < 2:
-                time.sleep(1.5)
-            else:
-                logger.error("Error al consultar Polymarket Gamma API tras 3 intentos: %s", exc)
-                return filas_normalizadas
+        for ev in lote:
+            ev_id = ev.get("id")
+            if ev_id not in ids_eventos_vistos:
+                ids_eventos_vistos.add(ev_id)
+                eventos.append(ev)
+        if len(lote) < limite:
+            break
 
-    if not isinstance(eventos, list):
+    if not eventos:
         return filas_normalizadas
 
     for evento in eventos:
@@ -105,8 +116,77 @@ def extraer_polymarket(limite: int = 100) -> List[Dict[str, Any]]:
         deporte, liga = inferir_deporte_y_liga(evento)
         mercados = evento.get("markets") or []
 
+        # --- AGRUPACIÓN DE FÚTBOL 3-WAY (1X2) EN POLYMARKET ---
+        # En fútbol, Polymarket publica 3 sub-mercados 'moneyline' con outcomes ["Yes", "No"]:
+        # (Equipo 1, Draw, Equipo 2). Los combinamos en una fila 'Ganador (1X2 - Sin Empate Ref)'
+        # con los clobTokenIds[0] ('Yes') de cada equipo para poder operar directo en el CLOB.
+        moneylines_yes_no = [
+            m
+            for m in mercados
+            if m.get("active", True)
+            and not m.get("closed", False)
+            and str(m.get("sportsMarketType") or "").lower().strip() == "moneyline"
+            and [str(x).lower() for x in parsear_campo_json(m.get("outcomes"))] == ["yes", "no"]
+        ]
+        ids_mercados_3way_procesados = set()
+        if len(moneylines_yes_no) == 3:
+            m_draw = next(
+                (
+                    m
+                    for m in moneylines_yes_no
+                    if "draw" in str(m.get("groupItemTitle") or m.get("question") or "").lower()
+                    or "tie" in str(m.get("groupItemTitle") or m.get("question") or "").lower()
+                ),
+                None,
+            )
+            m_equipos = [m for m in moneylines_yes_no if m is not m_draw]
+            if m_draw and len(m_equipos) == 2:
+                for m_item in moneylines_yes_no:
+                    ids_mercados_3way_procesados.add(m_item.get("id"))
+                m1, m2 = m_equipos[0], m_equipos[1]
+                p1 = float(m1.get("bestAsk") or (parsear_campo_json(m1.get("outcomePrices")) or [0])[0] or 0.0)
+                p2 = float(m2.get("bestAsk") or (parsear_campo_json(m2.get("outcomePrices")) or [0])[0] or 0.0)
+                p_draw = float(m_draw.get("bestAsk") or (parsear_campo_json(m_draw.get("outcomePrices")) or [0])[0] or 0.0)
+                toks_1 = parsear_campo_json(m1.get("clobTokenIds"))
+                toks_2 = parsear_campo_json(m2.get("clobTokenIds"))
+                if 0.01 < p1 < 0.99 and 0.01 < p2 < 0.99 and 0.01 < p_draw < 0.99 and toks_1 and toks_2:
+                    c1 = round(1.0 / p1, 4)
+                    c2 = round(1.0 / p2, 4)
+                    c_draw = round(1.0 / p_draw, 4)
+                    liq_1 = round(float(m1.get("liquidityNum") or m1.get("liquidity") or 0.0) / 2.0, 2)
+                    liq_2 = round(float(m2.get("liquidityNum") or m2.get("liquidity") or 0.0) / 2.0, 2)
+                    overround_3way = round((p1 + p2 + p_draw - 1.0) * 100.0, 2)
+                    inicio_3w = (
+                        m1.get("gameStartTime")
+                        or evento.get("startDate")
+                        or m1.get("endDate")
+                        or ""
+                    )
+                    cond_3w = str(m1.get("conditionId") or m1.get("id") or "")
+                    filas_normalizadas.append(
+                        {
+                            "Plataforma": "Polymarket",
+                            "Deporte": "Fútbol",
+                            "Liga": liga,
+                            "Evento": titulo_evento,
+                            "Inicio_UTC": str(inicio_3w),
+                            "Tipo_Mercado": "Ganador (1X2 - Sin Empate Ref)",
+                            "Linea": f"Empate@{c_draw}",
+                            "Lado_1": str(m1.get("groupItemTitle") or "Local").strip(),
+                            "Cuota_Taker_1": c1,
+                            "Liquidez_1_USD": liq_1,
+                            "Lado_2": str(m2.get("groupItemTitle") or "Visitante").strip(),
+                            "Cuota_Taker_2": c2,
+                            "Liquidez_2_USD": liq_2,
+                            "Overround_Libro_Pct": overround_3way,
+                            "ID_Mercado": f"{cond_3w}::{toks_1[0]}::{toks_2[0]}",
+                        }
+                    )
+
         for mercado in mercados:
             if not mercado.get("active", True) or mercado.get("closed", False):
+                continue
+            if mercado.get("id") in ids_mercados_3way_procesados:
                 continue
 
             outcomes = parsear_campo_json(mercado.get("outcomes"))
