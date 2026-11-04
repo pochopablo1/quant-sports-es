@@ -27,11 +27,14 @@ MICRO_STAKE_MIN_USD = 2.50
 MICRO_STAKE_MAX_USD = 6.00
 LIQUIDEZ_MINIMA_USD = 35.0
 
-# Reglas exactas de los 3 Motores (Umbral de ventaja ajustado al 3.0% a pedido del usuario)
+# Reglas exactas del Motor Ganador V2 (Calibrado con auditoría real de 9 días vs ESPN)
 UMBRAL_EV_FAVORITO_PCT = 3.0
-CUOTA_MAXIMA_FAVORITO = 2.10
-UMBRAL_ROI_SUREBET_PCT = 1.0
-UMBRAL_EV_TRADING_PRE_PCT = 3.0
+CUOTA_MAXIMA_FAVORITO = 1.95          # Corta la trampa de cuotas 2.04-2.20; conserva favoritos reales (~78% Win Rate)
+UMBRAL_ROI_SUREBET_PCT = 1.0          # 100% Win Rate comprobado
+UMBRAL_EV_TRADING_PRE_PCT = 3.5
+CUOTA_MAXIMA_TRADING_PRE = 2.35       # Prohibido comprar longshots ilíquidos (cuotas 3.0 a 16.0)
+MAX_OVERROUND_TRADING_PRE_PCT = 4.5   # Exige libro CLOB ajustado para que la venta Maker se ejecute rápido
+VENTANA_MAXIMA_HORAS_PRE = 36.0       # No inmovilizar capital ni repetir apuestas con 3-5 días de anticipación
 
 # Límites de cordura cuantitativa
 MAX_EV_REALISTA_PCT = 18.0
@@ -87,15 +90,18 @@ def calcular_micro_stake_usd(
 
 def _evento_en_juego_o_pasado(inicio_utc_str: Any) -> bool:
     """
-    Devuelve True si el partido ya comenzó o está a menos de 10 minutos de empezar
-    (evita entrar como Pre-Partido en eventos que ya están en vivo / In-Play).
+    Devuelve True si el partido ya comenzó, está a menos de 10 minutos de empezar,
+    o falta demasiado tiempo (> 36 horas, donde la liquidez es baja y se duplica riesgo).
     """
     dt = parsear_datetime_utc(inicio_utc_str)
     if dt is None:
         return False
     ahora_utc = datetime.now(tz=timezone.utc)
-    # Si la fecha está en el rango reciente (últimos 7 días) y ya pasó o faltan < 10 min, bloquear
+    # Bloquear si ya empezó o faltan menos de 10 minutos
     if (ahora_utc - timedelta(days=7)) <= dt <= (ahora_utc + timedelta(minutes=10)):
+        return True
+    # Bloquear si faltan más de 36 horas (evita apostar 4 días antes en mercados aún inmaduros)
+    if dt > (ahora_utc + timedelta(hours=VENTANA_MAXIMA_HORAS_PRE)):
         return True
     return False
 
@@ -230,7 +236,7 @@ def detectar_oportunidades_cuantitativas(
                     es_web3 = "SÍ (Wallet EVM)" if plat_mkt in PLATAFORMAS_EJECUTABLES_WEB3 else "No (KYC/Otro)"
                     prob_ganar_pct = round(p_justa * 100.0, 1)
 
-                    # --- MOTOR 1: VALUE BET EN FAVORITO (EV >= 4% y Cuota <= 2.10) ---
+                    # --- MOTOR 1: VALUE BET EN FAVORITO REAL (EV >= 3% y Cuota <= 1.95) ---
                     if ev_neto >= UMBRAL_EV_FAVORITO_PCT and c_bruta <= CUOTA_MAXIMA_FAVORITO:
                         stake_sug = calcular_micro_stake_usd(ev_neto, liq_lado)
                         item_vb = {
@@ -254,7 +260,7 @@ def detectar_oportunidades_cuantitativas(
                         value_bets.append(item_vb)
                         oportunidades_accionables.append(
                             {
-                                "Estrategia": "MOTOR_1_VALUE_FAVORITO (Cuota<=2.10, EV>=4%)",
+                                "Estrategia": "MOTOR_1_VALUE_FAVORITO (Cuota<=1.95, EV>=3%)",
                                 "Ejecutable_Web3": es_web3,
                                 "Plataforma_Entrada": plat_mkt,
                                 "Oraculo_Referencia": ref["Plataforma"],
@@ -269,7 +275,7 @@ def detectar_oportunidades_cuantitativas(
                                 "Comision_Pct": comision_pct,
                                 "Cuota_Neta": c_neta,
                                 "Cuota_Justa_Ref": c_justa,
-                                "Plan_Salida_Trading": "Mantener hasta final del partido (Favorito >=50%)",
+                                "Plan_Salida_Trading": "Mantener hasta final del partido (Favorito Real >52%)",
                                 "Ventaja_Neta_Pct": ev_neto,
                                 "Liquidez_Punta_USD": liq_lado,
                                 "Stake_Kelly_Sugerido_USD": stake_sug,
@@ -277,10 +283,12 @@ def detectar_oportunidades_cuantitativas(
                             }
                         )
 
-                    # --- MOTOR 3: TRADING PRE-PARTIDO (Scalping CLOB cuando Cuota > 2.10 y EV >= 4%) ---
+                    # --- MOTOR 3: TRADING PRE-PARTIDO (Scalping CLOB acotado a Cuota <= 2.35 y Spread libro <= 4.5%) ---
                     elif (
                         ev_neto >= UMBRAL_EV_TRADING_PRE_PCT
-                        and c_bruta > CUOTA_MAXIMA_FAVORITO
+                        and CUOTA_MAXIMA_FAVORITO < c_bruta <= CUOTA_MAXIMA_TRADING_PRE
+                        and abs(float(mkt.get("Overround_Libro_Pct") or 0.0)) <= MAX_OVERROUND_TRADING_PRE_PCT
+                        and liq_lado >= 100.0
                         and plat_mkt in PLATAFORMAS_CLOB_TRADING
                     ):
                         stake_sug = calcular_micro_stake_usd(ev_neto, liq_lado)

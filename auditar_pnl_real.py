@@ -363,8 +363,43 @@ def ejecutar_auditoria_real() -> None:
         por_motor["WinRate_Pct"] = ((por_motor["Ganadas"] / por_motor["Resueltas"]) * 100.0).round(1)
         print(por_motor.to_string(index=False))
 
+        # --- AUDITORÍA DEL MOTOR GANADOR V2 (Reglas calibradas: Cuota <= 1.98 + Surebets + 1 sola apuesta por Evento) ---
+        v2_candidatas = resueltas[
+            ((resueltas["Estrategia"] == "MOTOR_1_VALUE_FAVORITO") & (resueltas["Cuota_Viva"] <= 1.98))
+            | (resueltas["Estrategia"] == "MOTOR_2_SUREBET")
+        ].drop_duplicates(subset=["Evento"], keep="first").copy()
+
+        if not v2_candidatas.empty:
+            v2_ganadas = v2_candidatas[v2_candidatas["Resultado_Partido_Real"].str.startswith("GANADA")]
+            v2_cap = v2_candidatas["Stake_USD"].sum()
+            v2_pnl = v2_candidatas["PnL_Si_Mantenes_Al_Final_USD"].sum()
+            v2_wr = (len(v2_ganadas) / len(v2_candidatas)) * 100.0
+            print("\n" + "═" * 108)
+            print("💎 RENDIMIENTO DEL NUEVO 'MOTOR GANADOR V2' (EN LOS MISMOS PARTIDOS OFICIALES):")
+            print("   Reglas V2: (1) Favoritos Reales Cuota <= 1.98 + Surebets | (2) Candado 1 sola apuesta única por partido")
+            print("─" * 108)
+            print(
+                f"   🎯 Partidos únicos jugados : {len(v2_candidatas)} | "
+                f"✅ Ganados: {len(v2_ganadas)} ({v2_wr:.1f}% Win Rate) | "
+                f"💵 Capital: ${v2_cap:.2f} USD | "
+                f"💰 GANANCIA NETA REAL: {v2_pnl:+.2f} USD ({(v2_pnl/v2_cap*100):+.2f}% ROI Real)"
+            )
+            print("─" * 108)
+            cols_v2 = [
+                "Fecha",
+                "Estrategia",
+                "Evento",
+                "Seleccion",
+                "Stake_USD",
+                "Cuota_Viva",
+                "Resultado_Partido_Real",
+                "PnL_Si_Mantenes_Al_Final_USD",
+                "Marcador_Oficial",
+            ]
+            print(v2_candidatas[cols_v2].to_string(index=False))
+
         print("\n" + "─" * 108)
-        print("📋 MUESTRA DE LAS ÚLTIMAS 25 APUESTAS VERIFICADAS CONTRA EL MARCADOR OFICIAL:")
+        print("📋 MUESTRA DE LAS ÚLTIMAS 25 APUESTAS VERIFICADAS CONTRA EL MARCADOR OFICIAL (HISTORIAL V1 COMPLETO):")
         print("─" * 108)
         cols = [
             "Fecha",

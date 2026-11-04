@@ -202,23 +202,26 @@ def ejecutar_barrido_oportunidades(
     candidatas = df[df["Ventaja_Neta_Pct"] >= ev_minimo_pct].head(max_ordenes)
 
     ahora_iso = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    hoy_prefijo = ahora_iso[:10]
 
-    # Cargar claves ya ejecutadas hoy para no repetir la misma micro-apuesta en barridos sucesivos
-    claves_ejecutadas_hoy = set()
+    # Candado Global Anti-Duplicados (Histórico completo, no solo hoy):
+    # Jamás repetir apuesta en el mismo partido en días distintos ni acumular múltiples apuestas correlacionadas en un mismo Evento
+    claves_ejecutadas_historico = set()
+    eventos_ejecutados_historico = set()
     if RUTA_HISTORIAL_EJECUCIONES.exists():
         try:
             df_prev = pd.read_csv(RUTA_HISTORIAL_EJECUCIONES)
-            if not df_prev.empty and "Timestamp_UTC" in df_prev.columns:
-                df_hoy = df_prev[
-                    df_prev["Timestamp_UTC"].astype(str).str.startswith(hoy_prefijo)
-                    & df_prev["Estado_Orden"].astype(str).str.contains("OK|EJECUTAD|ACTIVO", na=False)
+            if not df_prev.empty and "Estado_Orden" in df_prev.columns:
+                df_aprobadas = df_prev[
+                    df_prev["Estado_Orden"].astype(str).str.contains("OK|EJECUTAD|ACTIVO", na=False)
                 ]
-                for _, r_ant in df_hoy.iterrows():
+                for _, r_ant in df_aprobadas.iterrows():
+                    ev_ant = str(r_ant.get("Evento", "")).strip()
                     sel_base_ant = str(r_ant.get("Seleccion", "")).split(" (Prob:")[0].strip()
-                    claves_ejecutadas_hoy.add(
-                        f"{r_ant.get('Estrategia')}|{r_ant.get('Plataforma')}|{r_ant.get('Evento')}|{sel_base_ant}"
+                    claves_ejecutadas_historico.add(
+                        f"{r_ant.get('Estrategia')}|{r_ant.get('Plataforma')}|{ev_ant}|{sel_base_ant}"
                     )
+                    if ev_ant:
+                        eventos_ejecutados_historico.add(ev_ant.lower())
         except Exception:
             pass
 
@@ -228,12 +231,14 @@ def ejecutar_barrido_oportunidades(
         estrategia = str(fila.get("Estrategia", "MOTOR_1"))
         estrategia_corta = estrategia.split(" ")[0]
         plat = str(fila["Plataforma_Entrada"])
-        evento = str(fila["Evento"])
+        evento = str(fila["Evento"]).strip()
         mercado_linea = str(fila["Mercado_y_Linea"])
         seleccion = str(fila["Seleccion_Apostar"])
         sel_base = seleccion.split(" (Prob:")[0].strip()
         clave_unica = f"{estrategia_corta}|{plat}|{evento}|{sel_base}"
-        if clave_unica in claves_ejecutadas_hoy:
+
+        # Bloquear si ya se apostó este partido en cualquier día anterior o en este mismo barrido (Máximo 1 tiro por partido)
+        if clave_unica in claves_ejecutadas_historico or evento.lower() in eventos_ejecutados_historico:
             continue
 
         # Candado Pre-Vuelo: bloquear si el partido ya comenzó o faltan menos de 10 minutos
@@ -298,9 +303,9 @@ def ejecutar_barrido_oportunidades(
                 prob_justa = 1.0 / cuota_justa
                 if "MOTOR_1_VALUE_FAVORITO" in estrategia:
                     ev_vivo_pct = round(((cuota_vwap * prob_justa) - 1.0) * 100.0, 2)
-                    if cuota_vwap > 2.15:
-                        estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 2.15)"
-                    elif ev_vivo_pct >= 2.5:
+                    if cuota_vwap > 1.98:
+                        estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 1.98 tope Favorito Real V2)"
+                    elif ev_vivo_pct >= 2.8:
                         if not modo_simulacion and plat == "Polymarket":
                             partes_tok = str(id_mkt).split("::")
                             tok_id = partes_tok[1] if int(idx_lado) == 1 else partes_tok[2]
@@ -313,11 +318,13 @@ def ejecutar_barrido_oportunidades(
                     else:
                         estado = f"DESCARTADA_POR_SLIPPAGE (EV vivo bajó a {ev_vivo_pct}%)"
                 else:
-                    # MOTOR 3: Trading Pre-Partido (comprar al Ask VWAP y postear venta Maker a prob_justa * 0.99)
+                    # MOTOR 3: Trading Pre-Partido V2 (tope estricto Cuota_VWAP <= 2.35, prohibido longshots)
                     precio_compra_vivo = 1.0 / cuota_vwap
                     precio_venta_maker = round(prob_justa * 0.99, 4)
                     ev_vivo_pct = round(((precio_venta_maker / precio_compra_vivo) - 1.0) * 100.0, 2)
-                    if ev_vivo_pct >= 2.0:
+                    if cuota_vwap > 2.35:
+                        estado = f"DESCARTADA_LONGSHOT_V2 (Cuota {cuota_vwap} > 2.35)"
+                    elif ev_vivo_pct >= 2.5:
                         if not modo_simulacion and plat == "Polymarket":
                             partes_tok = str(id_mkt).split("::")
                             tok_id = partes_tok[1] if int(idx_lado) == 1 else partes_tok[2]
@@ -341,7 +348,8 @@ def ejecutar_barrido_oportunidades(
                         estado = f"DESCARTADA_SCALPING (ROI vivo bajó a {ev_vivo_pct}%)"
 
         if any(k in estado for k in ("OK", "EJECUTAD", "ACTIVO")):
-            claves_ejecutadas_hoy.add(clave_unica)
+            claves_ejecutadas_historico.add(clave_unica)
+            eventos_ejecutados_historico.add(evento.lower())
 
         registros_ejecucion.append(
             {
