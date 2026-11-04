@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("Daemon24_7")
 
 
-def calcular_capital_rotado_hoy() -> float:
+def calcular_capital_rotado_hoy(solo_reales: bool = False) -> float:
     """Suma el Stake_USD de las órdenes aprobadas en el día UTC actual."""
     if not RUTA_HISTORIAL_EJECUCIONES.exists():
         return 0.0
@@ -42,9 +42,10 @@ def calcular_capital_rotado_hoy() -> float:
         if df.empty or "Timestamp_UTC" not in df.columns:
             return 0.0
         hoy_prefijo = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        patron = "ORDEN_REAL" if solo_reales else "OK|EJECUTAD|ACTIVO"
         df_hoy = df[
             df["Timestamp_UTC"].astype(str).str.startswith(hoy_prefijo)
-            & df["Estado_Orden"].astype(str).str.contains("OK|EJECUTAD|ACTIVO", na=False)
+            & df["Estado_Orden"].astype(str).str.contains(patron, na=False)
         ]
         return round(float(df_hoy["Stake_USD"].sum()), 2)
     except Exception:
@@ -70,7 +71,7 @@ def iniciar_daemon(
         modo_sim = not ejecucion_real
         etiqueta_modo = "REAL ON-CHAIN (Polymarket)" if ejecucion_real else "SIMULACION (Paper)"
 
-        capital_hoy = calcular_capital_rotado_hoy()
+        capital_hoy = calcular_capital_rotado_hoy(solo_reales=ejecucion_real)
         logger.info(
             "=== CICLO #%d [%s] | Capital rotado hoy: $%.2f / $%.2f USD ===",
             ciclo,

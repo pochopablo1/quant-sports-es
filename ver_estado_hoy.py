@@ -7,14 +7,22 @@ Muestra en tiempo real el estado de rotación diaria del Daemon 24/7 ($200 USD/d
 4. Listado detallado de todas las micro-apuestas ejecutadas hoy y las descartadas por el verificador de Orderbook.
 """
 from datetime import datetime, timezone
+import os
 import sys
+from dotenv import load_dotenv
 import pandas as pd
 
-from configuracion import DIRECTORIO_DATOS
+from configuracion import DIRECTORIO_DATOS, RUTA_BASE
 
 RUTA_HISTORIAL = DIRECTORIO_DATOS / "historial_ejecuciones.csv"
-META_DIARIA_USD = 200.0
-META_GANANCIA_DIARIA_USD = 8.0  # 4% de $200 USD
+META_DIARIA_USD = 90.0
+META_GANANCIA_DIARIA_USD = 5.40  # ~6% de $90 USD
+
+
+def _patron_aprobadas() -> str:
+    load_dotenv(RUTA_BASE / ".env", override=True)
+    es_real = os.getenv("EJECUCION_REAL_HABILITADA", "false").lower() == "true"
+    return "ORDEN_REAL" if es_real else "OK|EJECUTAD|ACTIVO"
 
 
 def mostrar_panel_hoy() -> None:
@@ -45,7 +53,7 @@ def mostrar_panel_hoy() -> None:
         print("═" * 108 + "\n")
         return
 
-    mask_aprobadas = df_hoy["Estado_Orden"].astype(str).str.contains("OK|EJECUTAD|ACTIVO", na=False)
+    mask_aprobadas = df_hoy["Estado_Orden"].astype(str).str.contains(_patron_aprobadas(), na=False)
     df_ok = df_hoy[mask_aprobadas].copy()
     df_rechazadas = df_hoy[~mask_aprobadas].copy()
 
@@ -139,7 +147,7 @@ def generar_texto_resumen_telegram_hoy() -> str:
     if df_hoy.empty:
         return f"📊 *RESUMEN 2H — TRIPLE MOTOR ({ahora_str})*\nSin operaciones para {hoy_utc}."
 
-    mask_aprobadas = df_hoy["Estado_Orden"].astype(str).str.contains("OK|EJECUTAD|ACTIVO", na=False)
+    mask_aprobadas = df_hoy["Estado_Orden"].astype(str).str.contains(_patron_aprobadas(), na=False)
     df_ok = df_hoy[mask_aprobadas].copy()
     df_rechazadas = df_hoy[~mask_aprobadas].copy()
 
@@ -155,12 +163,12 @@ def generar_texto_resumen_telegram_hoy() -> str:
     barra = "█" * bloques + "░" * (10 - bloques)
 
     lineas = [
-        f"🤖 *REPORTE CADA 2 HORAS — TRIPLE MOTOR ({hoy_utc} {ahora_str})*",
-        f"🎯 *Meta Diaria ($200 USD):* `[{barra}] {pct_meta:.1f}%`",
-        f"• *Capital apostado hoy:* `${capital_rotado:.2f} USD` ({len(df_ok)} micro-apuestas)",
+        f"🤖 *REPORTE CADA 2 HORAS — MOTOR GANADOR V2 ({hoy_utc} {ahora_str})*",
+        f"🎯 *Meta Diaria (${META_DIARIA_USD:.0f} USD):* `[{barra}] {pct_meta:.1f}%`",
+        f"• *Capital real apostado hoy:* `${capital_rotado:.2f} USD` ({len(df_ok)} micro-apuestas reales)",
         f"• *Capital restante hoy:* `${capital_restante:.2f} USD`",
-        f"• *Ganancia esperada hoy:* `+${ganancia_esp:.2f} USD` (+{roi_medio:.2f}% ROI medio | Meta 4% = +$8.00)",
-        f"• *Órdenes filtradas en Orderbook:* `{len(df_rechazadas)}` bloqueadas por slippage/liquidez",
+        f"• *Ganancia esperada hoy:* `+${ganancia_esp:.2f} USD` (+{roi_medio:.2f}% ROI medio | Meta = +${META_GANANCIA_DIARIA_USD:.2f})",
+        f"• *Órdenes filtradas/omitidas:* `{len(df_rechazadas)}`",
         "",
         "⚙️ *Desglose por Motor:*",
     ]
