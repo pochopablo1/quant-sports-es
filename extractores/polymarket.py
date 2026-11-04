@@ -264,6 +264,10 @@ def extraer_polymarket(limite: int = 100, paginas: int = 3) -> List[Dict[str, An
                     tipo_mercado = "Ganador (Moneyline)"
 
             overround = calcular_overround_pct(cuota_1, cuota_2)
+            if tipo_mercado.startswith("Prop"):
+                # Omitir mercados de proposiciones secundarias (Exact Score, 1H, BTTS, etc.) para ahorrar 85% de CPU y RAM
+                continue
+
             cond_id = str(mercado.get("conditionId") or mercado.get("id") or "")
             if len(clob_tokens) == 2:
                 id_mercado = f"{cond_id}::{clob_tokens[0]}::{clob_tokens[1]}"

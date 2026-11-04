@@ -52,7 +52,7 @@ def calcular_capital_rotado_hoy() -> float:
 
 
 def iniciar_daemon(
-    intervalo_minutos: float = 5.0,
+    intervalo_minutos: float = 10.0,
     meta_diaria_usd: float = 90.0,
     max_ciclos: int = 0,
     solo_local: bool = False,
@@ -130,7 +130,7 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(description="Daemon 24/7 de Micro-Apuestas Cuantitativas ($2.50 a $6.00 USD)")
-    parser.add_argument("--intervalo-minutos", type=float, default=5.0, help="Minutos entre cada barrido en vivo")
+    parser.add_argument("--intervalo-minutos", type=float, default=10.0, help="Minutos entre cada barrido en vivo")
     parser.add_argument("--meta-diaria", type=float, default=90.0, help="Presupuesto diario a rotar en USD")
     parser.add_argument("--max-ciclos", type=int, default=1, help="Cantidad de ciclos a ejecutar (0 = infinito 24/7)")
     parser.add_argument("--solo-local", action="store_true", help="Usar cache local sin llamar APIs externas")

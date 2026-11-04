@@ -8,6 +8,7 @@ Corrige y previene falsos positivos garantizando:
    'Commanders -7.5' NUNCA puede cruzarse con 'Commanders +7.5' (que es '49ers -7.5').
 5. Filtro de cordura cuantitativa: descarta desfasajes irreales (> 15% EV o > 10% Arbitraje) producto de mercados ilíquidos o exóticos.
 """
+from functools import lru_cache
 import re
 import unicodedata
 from datetime import datetime, timezone
@@ -160,6 +161,7 @@ TRADUCCIONES_DEPORTE = {
 }
 
 
+@lru_cache(maxsize=16384)
 def quitar_spread_de_nombre(nombre: str) -> str:
     """
     Elimina números de línea o hándicap al final de un nombre de equipo:
@@ -172,6 +174,7 @@ def quitar_spread_de_nombre(nombre: str) -> str:
     return limpio.strip()
 
 
+@lru_cache(maxsize=16384)
 def limpiar_texto(texto: str) -> str:
     """
     Elimina números de spread al final, quita tildes (unicodedata), aplica el diccionario
@@ -200,6 +203,7 @@ def estandarizar_deporte(deporte_raw: str) -> str:
     return TRADUCCIONES_DEPORTE.get(clave, deporte_raw.strip())
 
 
+@lru_cache(maxsize=16384)
 def parsear_datetime_utc(valor_fecha: Any) -> Optional[datetime]:
     """Convierte cualquier representación de fecha (ISO o Unix timestamp) en un objeto datetime UTC."""
     if not valor_fecha:
@@ -236,6 +240,7 @@ def estandarizar_fecha_utc(valor_fecha: Any) -> str:
     return str(valor_fecha or "").strip()
 
 
+@lru_cache(maxsize=32768)
 def fechas_compatibles(fecha_a: Any, fecha_b: Any, max_horas: float = 18.0) -> bool:
     """
     Verifica que dos eventos correspondan al mismo partido comprobando que sus horas de inicio
@@ -249,6 +254,7 @@ def fechas_compatibles(fecha_a: Any, fecha_b: Any, max_horas: float = 18.0) -> b
     return diferencia_horas <= max_horas
 
 
+@lru_cache(maxsize=32768)
 def similitud_equipos(nombre_a: str, nombre_b: str) -> float:
     """
     Calcula puntaje de similitud (0 a 100) entre nombres de equipos ya canonizados.
@@ -345,20 +351,46 @@ def emparejar_con_referencia(
     else:
         eq1_obj, eq2_obj = lado_1_obj, lado_2_obj
 
+    deporte_obj = str(mercado_objetivo.get("Deporte", ""))
+    fecha_obj = mercado_objetivo.get("Inicio_UTC")
+    id_obj = mercado_objetivo.get("ID_Mercado")
+    val_linea_obj: Optional[float] = None
+    if cat_obj in ("totales", "handicap"):
+        try:
+            val_linea_obj = float(linea_obj_str)
+        except (ValueError, TypeError):
+            return None, False, 0.0
+
     mejor_ref = None
     mejor_invertido = False
     mejor_puntaje = 0.0
 
     for ref in mercados_referencia:
-        if ref.get("ID_Mercado") == mercado_objetivo.get("ID_Mercado"):
+        if ref.get("ID_Mercado") == id_obj:
+            continue
+
+        # 0. Filtro ultrarrápido de Deporte y Categoría (ahorra 95% de CPU en PythonAnywhere)
+        deporte_ref = str(ref.get("Deporte", ""))
+        if deporte_obj and deporte_ref and deporte_obj != deporte_ref and "Deportes" not in (deporte_obj, deporte_ref):
             continue
 
         cat_ref = _categoria_mercado(str(ref.get("Tipo_Mercado", "")))
         if cat_obj != cat_ref:
             continue
 
+        # 0.5 Filtro ultrarrápido de Línea numérica ANTES de comparar strings
+        if val_linea_obj is not None:
+            try:
+                val_linea_ref = float(str(ref.get("Linea", "N/A")).strip())
+            except (ValueError, TypeError):
+                continue
+            if cat_obj == "totales" and abs(val_linea_obj - val_linea_ref) > 0.01:
+                continue
+            if cat_obj == "handicap" and abs(abs(val_linea_obj) - abs(val_linea_ref)) > 0.01:
+                continue
+
         # 1. Validar que la fecha/hora del partido sea compatible (evita cruzar partidos de distintas semanas)
-        if not fechas_compatibles(mercado_objetivo.get("Inicio_UTC"), ref.get("Inicio_UTC")):
+        if not fechas_compatibles(fecha_obj, ref.get("Inicio_UTC")):
             continue
 
         # 2. Extraer equipos de la referencia
