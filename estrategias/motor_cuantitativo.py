@@ -126,10 +126,15 @@ def detectar_oportunidades_cuantitativas(
         for m in todos_los_mercados
         if m.get("Plataforma") == "Pinnacle" and not _evento_en_juego_o_pasado(m.get("Inicio_UTC"))
     ]
+    mercados_sanity_check = [
+        m
+        for m in todos_los_mercados
+        if m.get("Plataforma") == "Consenso_AN_DK" and not _evento_en_juego_o_pasado(m.get("Inicio_UTC"))
+    ]
     mercados_exchanges = [
         m
         for m in todos_los_mercados
-        if m.get("Plataforma") != "Pinnacle"
+        if m.get("Plataforma") not in ("Pinnacle", "Consenso_AN_DK")
         and not _evento_en_juego_o_pasado(m.get("Inicio_UTC"))
         and not _es_prop_secundario(
             str(m.get("Evento", "")),
@@ -242,8 +247,18 @@ def detectar_oportunidades_cuantitativas(
                     es_web3 = "SÍ (Wallet EVM)" if plat_mkt in PLATAFORMAS_EJECUTABLES_WEB3 else "No (KYC/Otro)"
                     prob_ganar_pct = round(p_justa * 100.0, 1)
 
-                    # --- MOTOR 1: VALUE BET EN FAVORITO REAL (EV >= 3% y Cuota <= 1.95) ---
+                    # --- MOTOR 1: VALUE BET EN FAVORITO REAL (EV >= 2% y Cuota <= 1.85) ---
                     if ev_neto >= UMBRAL_EV_FAVORITO_PCT and c_bruta <= CUOTA_MAXIMA_FAVORITO:
+                        # Sanity Check con DraftKings / Action Network: si existe la línea en Consenso_AN_DK y contradice el valor (EV < -0.5%), descartar
+                        ref_san, inv_san, _ = emparejar_con_referencia(mkt, mercados_sanity_check, umbral_similitud=85.0)
+                        if ref_san:
+                            c1_s = float(ref_san.get("Cuota_Taker_2" if inv_san else "Cuota_Taker_1") or 0.0)
+                            c2_s = float(ref_san.get("Cuota_Taker_1" if inv_san else "Cuota_Taker_2") or 0.0)
+                            if c1_s > 1.01 and c2_s > 1.01:
+                                p1_s, p2_s, _, _ = devig_multiplicativo(c1_s, c2_s)
+                                p_s_lado = p1_s if idx_lado == 1 else p2_s
+                                if (c_neta * p_s_lado - 1.0) < -0.005:
+                                    continue
                         stake_sug = calcular_micro_stake_usd(ev_neto, liq_lado)
                         item_vb = {
                             "Motor": "MOTOR_1_VALUE_FAVORITO",

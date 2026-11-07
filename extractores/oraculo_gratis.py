@@ -122,7 +122,7 @@ def extraer_action_network() -> List[Dict[str, Any]]:
                     overround_3 = round(((1.0 / c_local) + (1.0 / c_vis) + (1.0 / c_empate) - 1.0) * 100.0, 2)
                     filas.append(
                         {
-                            "Plataforma": "Pinnacle",
+                            "Plataforma": "Consenso_AN_DK",
                             "Deporte": deporte_es,
                             "Liga": liga_es,
                             "Evento": evento_str,
@@ -142,7 +142,7 @@ def extraer_action_network() -> List[Dict[str, Any]]:
                 else:
                     filas.append(
                         {
-                            "Plataforma": "Pinnacle",
+                            "Plataforma": "Consenso_AN_DK",
                             "Deporte": deporte_es,
                             "Liga": liga_es,
                             "Evento": evento_str,
@@ -167,7 +167,7 @@ def extraer_action_network() -> List[Dict[str, Any]]:
             if sp_home is not None and c_sp_home and c_sp_away:
                 filas.append(
                     {
-                        "Plataforma": "Pinnacle",
+                        "Plataforma": "Consenso_AN_DK",
                         "Deporte": deporte_es,
                         "Liga": liga_es,
                         "Evento": evento_str,
@@ -192,7 +192,7 @@ def extraer_action_network() -> List[Dict[str, Any]]:
             if total_pts is not None and c_over and c_under:
                 filas.append(
                     {
-                        "Plataforma": "Pinnacle",
+                        "Plataforma": "Consenso_AN_DK",
                         "Deporte": deporte_es,
                         "Liga": liga_es,
                         "Evento": evento_str,
@@ -277,7 +277,7 @@ def extraer_espn_draftkings() -> List[Dict[str, Any]]:
                     overround_3 = round(((1.0 / c_home) + (1.0 / c_away) + (1.0 / c_draw) - 1.0) * 100.0, 2)
                     filas.append(
                         {
-                            "Plataforma": "Pinnacle",
+                            "Plataforma": "Consenso_AN_DK",
                             "Deporte": deporte_es,
                             "Liga": liga_es,
                             "Evento": evento_str,
@@ -297,7 +297,7 @@ def extraer_espn_draftkings() -> List[Dict[str, Any]]:
                 elif "soccer" not in ruta_deporte:
                     filas.append(
                         {
-                            "Plataforma": "Pinnacle",
+                            "Plataforma": "Consenso_AN_DK",
                             "Deporte": deporte_es,
                             "Liga": liga_es,
                             "Evento": evento_str,
@@ -327,7 +327,7 @@ def extraer_espn_draftkings() -> List[Dict[str, Any]]:
                     val_sp = str(float(str(linea_sp).replace("+", "")))
                     filas.append(
                         {
-                            "Plataforma": "Pinnacle",
+                            "Plataforma": "Consenso_AN_DK",
                             "Deporte": deporte_es,
                             "Liga": liga_es,
                             "Evento": evento_str,
@@ -357,7 +357,7 @@ def extraer_espn_draftkings() -> List[Dict[str, Any]]:
             if linea_tot is not None and c_ov and c_un:
                 filas.append(
                     {
-                        "Plataforma": "Pinnacle",
+                        "Plataforma": "Consenso_AN_DK",
                         "Deporte": deporte_es,
                         "Liga": liga_es,
                         "Evento": evento_str,

@@ -263,12 +263,21 @@ def firmar_orden_polymarket_clob(
         contratos = max(5.0, round(float(tamano_usd) / precio_limpio, 2))
         costo_real_usd = round(contratos * precio_limpio, 2)
 
-        orden_firmada = sc.create_limit_order(
-            token_id=str(token_id),
-            price=Decimal(f"{precio_limpio:.2f}"),
-            size=Decimal(f"{contratos:.2f}"),
-            side=const_lado,
-        )
+        if str(tipo_orden).upper() == "FOK" and const_lado == "BUY":
+            orden_firmada = sc.create_market_order(
+                token_id=str(token_id),
+                side=const_lado,
+                amount=Decimal(f"{costo_real_usd:.2f}"),
+                max_price=Decimal(f"{precio_limpio:.2f}"),
+                order_type="FOK",
+            )
+        else:
+            orden_firmada = sc.create_limit_order(
+                token_id=str(token_id),
+                price=Decimal(f"{precio_limpio:.2f}"),
+                size=Decimal(f"{contratos:.2f}"),
+                side=const_lado,
+            )
 
         # Enviar orden usando conexión directa o puente HTTPS anti-geobloqueo (AR / PythonAnywhere US)
         cliente_orig = sc._ctx.secure_clob._client

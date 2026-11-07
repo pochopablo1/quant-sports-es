@@ -202,10 +202,7 @@ def _verificar_pata_individual(
         return verificar_orderbook_sx_bet_en_vivo(id_mkt, idx_lado, stake_usd)
     if plat == "Kalshi":
         return verificar_orderbook_kalshi_en_vivo(id_mkt, idx_lado, stake_usd)
-    if plat in ("Limitless", "Azuro V3", "Futuur"):
-        ok = liq_fallback >= stake_usd
-        return ok, cuota_fallback, liq_fallback, f"{plat} (Liquidez snapshot=${liq_fallback:.2f} USD)"
-    return False, 0.0, 0.0, f"Plataforma no soportada: {plat}"
+    return False, 0.0, 0.0, f"Plataforma sin verificador de orderbook en vivo ({plat})"
 
 
 def ejecutar_barrido_oportunidades(
@@ -346,8 +343,8 @@ def ejecutar_barrido_oportunidades(
                     ev_vivo_pct = round(((cuota_vwap * prob_justa) - 1.0) * 100.0, 2)
                     if cuota_vwap > 1.85:
                         estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 1.85 tope Favorito Puro >= $0.54)"
-                    elif stake_usd > 6.50:
-                        estado = f"DESCARTADA_STAKE_MINIMO_5_SHARES (${stake_usd:.2f} supera tope de micro-apuesta)"
+                    elif stake_usd > 6.00:
+                        estado = f"DESCARTADA_STAKE_MINIMO_5_SHARES (${stake_usd:.2f} supera tope de $6.00 USD)"
                     elif ev_vivo_pct >= 2.0:
                         if not modo_simulacion:
                             if plat == "Polymarket":
