@@ -261,6 +261,7 @@ def firmar_orden_polymarket_clob(
         # Redondear a 2 decimales estándar de tick grid (0.01) y calcular contratos (mínimo técnico: 5 shares)
         precio_limpio = round(float(precio), 2)
         contratos = max(5.0, round(float(tamano_usd) / precio_limpio, 2))
+        costo_real_usd = round(contratos * precio_limpio, 2)
 
         orden_firmada = sc.create_limit_order(
             token_id=str(token_id),
@@ -287,9 +288,20 @@ def firmar_orden_polymarket_clob(
                             timeout=12.0,
                         )
                     respuesta = sc.post_order(orden_firmada)
+                    estado_str = str(getattr(respuesta, "status", "")).upper()
+                    order_id = str(getattr(respuesta, "order_id", ""))
+                    if "MATCHED" not in estado_str:
+                        try:
+                            sc.cancel_order(order_id)
+                        except Exception:
+                            pass
+                        return (
+                            False,
+                            f"Orden no se llenó en el acto (Estado: {estado_str}) y fue cancelada para evitar órdenes colgadas.",
+                        )
                     return (
                         True,
-                        f"Orden ejecutada en Polymarket V2 ({contratos} contratos @ ${precio_limpio:.2f} | ID: {respuesta.order_id} | Estado: {respuesta.status})",
+                        f"Orden MATCHED en Polymarket V2 ({contratos} contratos @ ${precio_limpio:.2f} = ${costo_real_usd:.2f} USD | ID: {order_id})",
                     )
                 except Exception as e_post:
                     ultimo_error = e_post

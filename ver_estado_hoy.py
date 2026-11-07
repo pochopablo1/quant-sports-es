@@ -1,13 +1,14 @@
 """
-Panel de Control y Reporte de Telegram en Vivo (`ver_estado_hoy.py`).
+Panel de Control, Auditor de CLV (Closing Line Value) y Reporte de Telegram en Vivo (`ver_estado_hoy.py`).
 ====================================================================
 Cuando `EJECUCION_REAL_HABILITADA=true`, consulta directamente la Blockchain de Polygon
 y la API Oficial de Polymarket V2 (`SecureClient`) de tu Deposit Wallet (`0x71DD64...`),
 mostrando únicamente:
 1. Saldo líquido real en `pUSD` (`$ USD`) disponible en tu billetera + Valor actual de posiciones en juego.
-2. Apuestas reales GANADAS y cobradas automáticamente (`REDEEM`).
-3. Apuestas reales ABIERTAS en curso ahora mismo con su cotización en vivo.
-4. Apuestas reales finalizadas sin éxito.
+2. CLV (Closing Line Value) en tiempo real de tus posiciones (`(precio_actual / precio_entrada - 1) * 100`) y registro en `datos/auditoria_clv.csv`.
+3. Apuestas reales GANADAS y cobradas automáticamente (`REDEEM`).
+4. Apuestas reales ABIERTAS en curso ahora mismo con su cotización y CLV en vivo.
+5. Apuestas reales finalizadas sin éxito.
 Jamás mezcla simulaciones antiguas de Paper Trading (`Motor 3`, `Futuur`, `Kalshi`).
 """
 from datetime import datetime, timezone
@@ -21,7 +22,54 @@ from ejecutor.gestor_wallet import verificar_estado_wallet
 from alertas.telegram_bot import enviar_mensaje_telegram
 
 RUTA_HISTORIAL = DIRECTORIO_DATOS / "historial_ejecuciones.csv"
+RUTA_CLV_CSV = DIRECTORIO_DATOS / "auditoria_clv.csv"
 CAPITAL_INICIAL_REFERENCIA_USD = 89.24
+
+
+def _registrar_snapshot_clv(abiertas: list) -> float:
+    """
+    Registra y actualiza en `datos/auditoria_clv.csv` el último precio pre-cierre de cada posición real
+    para medir el CLV (Closing Line Value) acumulado de forma persistente.
+    Retorna el CLV promedio histórico en %.
+    """
+    ahora_iso = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    existentes = {}
+    if RUTA_CLV_CSV.exists():
+        try:
+            df_prev = pd.read_csv(RUTA_CLV_CSV)
+            for _, r in df_prev.iterrows():
+                clave = f"{r.get('Titulo')}|{r.get('Seleccion')}"
+                existentes[clave] = dict(r)
+        except Exception:
+            pass
+
+    for ab in abiertas:
+        p_ent = float(ab.get("precio_entrada") or 0.0)
+        p_act = float(ab.get("precio_actual") or 0.0)
+        # Solo actualizar CLV pre-partido cuando el precio actual está dentro del rango pre-match (0.15 a 0.92)
+        if p_ent > 0.05 and 0.15 <= p_act <= 0.92:
+            clv_pct = round(((p_act / p_ent) - 1.0) * 100.0, 2)
+            clave = f"{ab['titulo']}|{ab['seleccion']}"
+            existentes[clave] = {
+                "Ultima_Actualizacion_UTC": ahora_iso,
+                "Titulo": ab["titulo"],
+                "Seleccion": ab["seleccion"],
+                "Precio_Entrada": p_ent,
+                "Cuota_Entrada": round(1.0 / p_ent, 4),
+                "Ultimo_Precio_Mercado": p_act,
+                "Ultima_Cuota_Mercado": round(1.0 / p_act, 4),
+                "CLV_Pct": clv_pct,
+                "Costo_USD": ab["costo_usd"],
+            }
+
+    if existentes:
+        try:
+            df_out = pd.DataFrame(list(existentes.values()))
+            df_out.to_csv(RUTA_CLV_CSV, index=False, encoding="utf-8-sig")
+            return round(float(df_out["CLV_Pct"].mean()), 2)
+        except Exception:
+            pass
+    return 0.0
 
 
 def obtener_radiografia_real_polymarket() -> dict:
@@ -57,12 +105,16 @@ def obtener_radiografia_real_polymarket() -> dict:
                     costo = round(float(p.total_cost_usdc), 2)
                     val_act = round(float(p.current_value), 2)
                     pnl = round(float(p.total_pnl), 2)
+                    p_ent = round(float(p.avg_price), 3)
+                    p_act = round(float(p.current_price), 3)
+                    clv_vivo = round(((p_act / p_ent) - 1.0) * 100.0, 2) if p_ent > 0.01 else 0.0
                     item_dict = {
                         "titulo": str(p.title),
                         "seleccion": str(p.outcome),
                         "contratos": round(float(p.current_size), 2),
-                        "precio_entrada": round(float(p.avg_price), 3),
-                        "precio_actual": round(float(p.current_price), 3),
+                        "precio_entrada": p_ent,
+                        "precio_actual": p_act,
+                        "clv_pct": clv_vivo,
                         "costo_usd": costo,
                         "valor_actual_usd": val_act,
                         "pnl_usd": pnl,
@@ -93,7 +145,6 @@ def obtener_radiografia_real_polymarket() -> dict:
                         cobrado = round(float(a.amount), 2)
                         info_tr = trades_por_cond.get(cond_id, {})
                         costo_est = info_tr.get("costo_usd", round(cobrado * 0.55, 2))
-                        # En caso de redención parcial/total, el pago de cada share ganador es $1.00
                         shares_gan = info_tr.get("shares", cobrado)
                         pago_real = max(cobrado, round(shares_gan * 1.0, 2))
                         ganancia_neta = round(pago_real - costo_est, 2)
@@ -114,6 +165,7 @@ def obtener_radiografia_real_polymarket() -> dict:
     if valor_posiciones_usd == 0.0 and abiertas:
         valor_posiciones_usd = round(sum(x["valor_actual_usd"] for x in abiertas), 2)
 
+    clv_promedio_pct = _registrar_snapshot_clv(abiertas)
     patrimonio_total_usd = round(pusd_cash + valor_posiciones_usd, 2)
     pnl_global_usd = round(patrimonio_total_usd - CAPITAL_INICIAL_REFERENCIA_USD, 2)
 
@@ -124,6 +176,7 @@ def obtener_radiografia_real_polymarket() -> dict:
         "patrimonio_total": patrimonio_total_usd,
         "pnl_global_usd": pnl_global_usd,
         "pol_gas": round(pol_gas, 2),
+        "clv_promedio_pct": clv_promedio_pct,
         "abiertas": abiertas,
         "ganadas": ganadas_redeem,
         "perdidas": perdidas,
@@ -146,6 +199,7 @@ def generar_texto_resumen_telegram_hoy() -> str:
         f"💼 *Patrimonio Total Actual:* `${rad['patrimonio_total']:.2f} USD` (Inicial: `$89.24` | PnL: `{rad['pnl_global_usd']:+.2f} USD`)",
         f"• *Efectivo Líquido (`pUSD`):* `${rad['pusd_cash']:.2f} USD`",
         f"• *Capital en Juego ({cant_abi} abiertas):* `${rad['valor_en_juego']:.2f} USD`",
+        f"• *CLV Promedio (Closing Line Value):* `{rad['clv_promedio_pct']:+.2f}%`",
         f"• *Gas en Billetera:* `{rad['pol_gas']:.2f} POL`",
         f"• *Balance Resueltas:* `{cant_gan} Ganadas ✅` / `{cant_per} Perdidas ❌` (`{wr_pct}%` acierto)",
         "",
@@ -167,7 +221,7 @@ def generar_texto_resumen_telegram_hoy() -> str:
             lineas.append(
                 f"  • {signo} *{ab['titulo']}* — `{ab['seleccion']}`\n"
                 f"    Entrada: `${ab['precio_entrada']:.2f}` ➡️ Actual: `${ab['precio_actual']:.3f}` "
-                f"(Valor: `${ab['valor_actual_usd']:.2f}` | `{ab['pnl_usd']:+.2f} USD`)"
+                f"(CLV: `{ab['clv_pct']:+.2f}%` | Valor: `${ab['valor_actual_usd']:.2f}` | `{ab['pnl_usd']:+.2f} USD`)"
             )
         lineas.append("")
 

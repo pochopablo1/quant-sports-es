@@ -5,14 +5,18 @@ usando devigging multiplicativo:
   prob_fair_i = (1.0 / odds_pinnacle_i) / sum(1.0 / odds_pinnacle_j)
   fair_odds_i = 1.0 / prob_fair_i
 """
+import json
 import logging
+import time
 from typing import List, Dict, Any, Tuple
 import requests
-from configuracion import ODDS_API_KEYS, calcular_overround_pct
+from configuracion import DIRECTORIO_DATOS, ODDS_API_KEYS, calcular_overround_pct
 
 logger = logging.getLogger(__name__)
 
 URL_BASE_ODDS_API = "https://api.the-odds-api.com/v4/sports"
+RUTA_CACHE_PINNACLE_FRESCO = DIRECTORIO_DATOS / "cache_pinnacle_fresco.json"
+_INDICE_KEY_ACTUAL = 0
 
 # Ligas principales de alta liquidez para consultar en Pinnacle
 DEPORTES_OBJETIVO = [
@@ -79,27 +83,35 @@ def devig_multiplicativo_3way(
 def extraer_pinnacle(max_deportes: int = 6) -> List[Dict[str, Any]]:
     """
     Consulta The-Odds-API filtrando por el bookmaker 'pinnacle' (y 'pinnacle' + equivalentes sharp
-    si un evento solo tiene mercados 2-way).
+    si un evento solo tiene mercados 2-way). Rota automáticamente entre las ODDS_API_KEYS disponibles.
     """
+    global _INDICE_KEY_ACTUAL
     filas_normalizadas: List[Dict[str, Any]] = []
     if not ODDS_API_KEYS:
         logger.warning("No se encontraron claves ODDS_API_KEYS en la configuración.")
         return filas_normalizadas
 
-    api_key = ODDS_API_KEYS[0]
+    api_key = ODDS_API_KEYS[_INDICE_KEY_ACTUAL % len(ODDS_API_KEYS)]
+    _INDICE_KEY_ACTUAL += 1
 
     # Primero obtenemos qué deportes están activos en este momento para no gastar cuota en ligas fuera de temporada
-    try:
-        resp_deportes = requests.get(
-            URL_BASE_ODDS_API, params={"apiKey": api_key}, timeout=15
-        )
-        resp_deportes.raise_for_status()
-        deportes_activos_api = {
-            d.get("key"): d for d in resp_deportes.json() if isinstance(d, dict) and d.get("active")
-        }
-    except Exception as exc:
-        logger.error("Error al consultar lista de deportes en The-Odds-API: %s", exc)
-        deportes_activos_api = {}
+    deportes_activos_api = {}
+    for intento_k in range(len(ODDS_API_KEYS)):
+        try:
+            resp_deportes = requests.get(
+                URL_BASE_ODDS_API, params={"apiKey": api_key}, timeout=15
+            )
+            if resp_deportes.status_code in (401, 402, 429):
+                api_key = ODDS_API_KEYS[(_INDICE_KEY_ACTUAL + intento_k) % len(ODDS_API_KEYS)]
+                continue
+            resp_deportes.raise_for_status()
+            deportes_activos_api = {
+                d.get("key"): d for d in resp_deportes.json() if isinstance(d, dict) and d.get("active")
+            }
+            break
+        except Exception as exc:
+            logger.error("Error al consultar lista de deportes en The-Odds-API: %s", exc)
+            deportes_activos_api = {}
 
     deportes_a_consultar = []
     for key, dep_es, liga_es in DEPORTES_OBJETIVO:
@@ -233,6 +245,43 @@ def extraer_pinnacle(max_deportes: int = 6) -> List[Dict[str, Any]]:
                             )
 
     return filas_normalizadas
+
+
+def obtener_pinnacle_fresco(ttl_minutos: float = 45.0, max_deportes: int = 6) -> List[Dict[str, Any]]:
+    """
+    Obtiene cuotas de Pinnacle Real vía The-Odds-API con TTL estricto (por defecto 45 minutos).
+    - JAMÁS devuelve cuotas viejas (> ttl_minutos) para evitar falso EV por líneas vencidas.
+    - Rota entre las 4 keys configuradas en ODDS_API_KEYS.
+    """
+    ahora_ts = time.time()
+    if RUTA_CACHE_PINNACLE_FRESCO.exists():
+        try:
+            payload = json.loads(RUTA_CACHE_PINNACLE_FRESCO.read_text(encoding="utf-8"))
+            ts_guardado = float(payload.get("timestamp_utc", 0.0))
+            edad_min = (ahora_ts - ts_guardado) / 60.0
+            if edad_min <= ttl_minutos and isinstance(payload.get("mercados"), list):
+                logger.info(
+                    "Pinnacle Real (TTL fresco %.1f min <= %.1f min): %d mercados cargados.",
+                    edad_min,
+                    ttl_minutos,
+                    len(payload["mercados"]),
+                )
+                return payload["mercados"]
+        except Exception as exc:
+            logger.warning("No se pudo leer cache_pinnacle_fresco.json: %s", exc)
+
+    mercados_vivos = extraer_pinnacle(max_deportes=max_deportes)
+    if mercados_vivos:
+        try:
+            RUTA_CACHE_PINNACLE_FRESCO.parent.mkdir(parents=True, exist_ok=True)
+            RUTA_CACHE_PINNACLE_FRESCO.write_text(
+                json.dumps({"timestamp_utc": ahora_ts, "mercados": mercados_vivos}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            logger.info("Pinnacle Real actualizado en vivo: %d mercados frescos guardados.", len(mercados_vivos))
+        except Exception as exc:
+            logger.warning("No se pudo guardar cache_pinnacle_fresco.json: %s", exc)
+    return mercados_vivos
 
 
 if __name__ == "__main__":

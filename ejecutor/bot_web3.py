@@ -158,6 +158,35 @@ def verificar_orderbook_sx_bet_en_vivo(
     return True, cuota_efectiva, liq_usd, f"Hash={market_hash[:10]}... | Liq=${liq_usd:,.2f} USD"
 
 
+def verificar_orderbook_kalshi_en_vivo(
+    ticker: str,
+    indice_lado: int,
+    stake_usd: float,
+) -> Tuple[bool, float, float, str]:
+    """Consulta el mercado individual en Kalshi API v2 en tiempo real para verificar ask y liquidez."""
+    try:
+        resp = requests.get(
+            f"https://api.elections.kalshi.com/trade-api/v2/markets/{ticker}",
+            timeout=8,
+        )
+        if resp.status_code != 200:
+            return False, 0.0, 0.0, f"HTTP {resp.status_code} en Kalshi market {ticker}"
+        mkt = resp.json().get("market") or {}
+        ask_key = "yes_ask_dollars" if int(indice_lado) == 1 else "no_ask_dollars"
+        size_key = "yes_ask_size_fp" if int(indice_lado) == 1 else "yes_bid_size_fp"
+        ask = float(mkt.get(ask_key) or 0.0)
+        size = float(mkt.get(size_key) or 0.0)
+        if not (0.01 < ask < 0.99):
+            return False, 0.0, 0.0, "Sin punta Ask válida en Kalshi"
+        liq_usd = round(ask * size, 2)
+        cuota = round(1.0 / ask, 4)
+        if liq_usd < stake_usd:
+            return False, cuota, liq_usd, f"Liquidez insuficiente en Kalshi (${liq_usd:.2f} < ${stake_usd:.2f})"
+        return True, cuota, liq_usd, f"Kalshi {ticker} Ask={ask} (${liq_usd:.2f} USD)"
+    except Exception as exc:
+        return False, 0.0, 0.0, f"Error Kalshi en vivo: {exc}"
+
+
 def _verificar_pata_individual(
     plat: str,
     id_mkt: str,
@@ -166,14 +195,16 @@ def _verificar_pata_individual(
     cuota_fallback: float,
     liq_fallback: float,
 ) -> Tuple[bool, float, float, str]:
-    """Verifica una pata individual en el orderbook en vivo de Polymarket, SX Bet, Limitless o Azuro V3."""
+    """Verifica una pata individual en el orderbook en vivo de Polymarket, SX Bet o Kalshi."""
     if plat == "Polymarket":
         return verificar_orderbook_polymarket_en_vivo(id_mkt, idx_lado, stake_usd)
     if plat == "SX Bet":
         return verificar_orderbook_sx_bet_en_vivo(id_mkt, idx_lado, stake_usd)
-    if plat in ("Limitless", "Azuro V3", "Kalshi", "Futuur"):
+    if plat == "Kalshi":
+        return verificar_orderbook_kalshi_en_vivo(id_mkt, idx_lado, stake_usd)
+    if plat in ("Limitless", "Azuro V3", "Futuur"):
         ok = liq_fallback >= stake_usd
-        return ok, cuota_fallback, liq_fallback, f"{plat} verificado (${liq_fallback:.2f} USD)"
+        return ok, cuota_fallback, liq_fallback, f"{plat} (Liquidez snapshot=${liq_fallback:.2f} USD)"
     return False, 0.0, 0.0, f"Plataforma no soportada: {plat}"
 
 
@@ -291,8 +322,13 @@ def ejecutar_barrido_oportunidades(
             liq_vivo = min(liq1_vivo, liq2_vivo)
             detalle_libro = f"P1[{plat_1}]: {det1} || P2[{plat_2}]: {det2}"
 
-        # Caso B: MOTOR 1 (Value Favorito <= 2.10) o MOTOR 3 (Trading Pre-Partido CLOB)
+        # Caso B: MOTOR 1 (Value Favorito <= 1.85)
         else:
+            # En Polymarket el mínimo técnico del CLOB es 5 shares; ajustar stake_usd real antes de consultar VWAP
+            if plat == "Polymarket" and cuota_detectada > 1.01:
+                min_usd_5_shares = round(5.0 * round(1.0 / cuota_detectada, 2), 2)
+                stake_usd = round(max(stake_usd, min_usd_5_shares), 2)
+
             ok_libro, cuota_vwap, liq_vivo, detalle_libro = _verificar_pata_individual(
                 plat, id_mkt, idx_lado, stake_usd, cuota_detectada, liq_inicial
             )
@@ -300,18 +336,25 @@ def ejecutar_barrido_oportunidades(
                 estado = f"DESCARTADA_EN_ORDERBOOK ({detalle_libro})"
                 ev_vivo_pct = 0.0
             else:
+                if plat == "Polymarket":
+                    precio_grid = round(1.0 / cuota_vwap, 2)
+                    contratos_reales = max(5.0, round(stake_usd / precio_grid, 2))
+                    stake_usd = round(contratos_reales * precio_grid, 2)
+
                 prob_justa = 1.0 / cuota_justa
                 if "MOTOR_1_VALUE_FAVORITO" in estrategia:
                     ev_vivo_pct = round(((cuota_vwap * prob_justa) - 1.0) * 100.0, 2)
                     if cuota_vwap > 1.85:
                         estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 1.85 tope Favorito Puro >= $0.54)"
+                    elif stake_usd > 6.50:
+                        estado = f"DESCARTADA_STAKE_MINIMO_5_SHARES (${stake_usd:.2f} supera tope de micro-apuesta)"
                     elif ev_vivo_pct >= 2.0:
                         if not modo_simulacion:
                             if plat == "Polymarket":
                                 partes_tok = str(id_mkt).split("::")
                                 tok_id = partes_tok[1] if int(idx_lado) == 1 else partes_tok[2]
                                 ok_real, msg_real = firmar_orden_polymarket_clob(
-                                    tok_id, 1.0 / cuota_vwap, stake_usd, lado="BUY", tipo_orden="GTC"
+                                    tok_id, 1.0 / cuota_vwap, stake_usd, lado="BUY", tipo_orden="FOK"
                                 )
                                 estado = "ORDEN_REAL_FOK_EJECUTADA" if ok_real else f"FALLO_ORDEN_REAL ({msg_real})"
                             else:

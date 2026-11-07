@@ -1,8 +1,8 @@
 """
 Orquestador Principal del Motor Cuantitativo de Mercados Deportivos.
-Modo ahorro de tokens activado por defecto (`usar_odds_api=False`, `enviar_telegram=False`):
-- Permite auditar y cruzar mercados entre Polymarket, SX Bet y Azuro V3 sin gastar cuota de The-Odds-API,
-  o reutilizar la caché local de Pinnacle ya guardada en el CSV/SQLite.
+Modo 100% fresco en vivo:
+- Prohibido cargar cuotas viejas de CSV (`cargar_cache_pinnacle` eliminado por completo).
+- Combina Pinnacle Real con TTL estricto de 45 min (`obtener_pinnacle_fresco`) + Oráculo en Vivo (Action Network + ESPN/DraftKings).
 """
 import argparse
 import logging
@@ -26,7 +26,7 @@ from extractores.limitless import extraer_limitless
 from extractores.futuur import extraer_futuur
 from extractores.manifold import extraer_manifold
 from extractores.smarkets import extraer_smarkets
-from extractores.pinnacle import extraer_pinnacle
+from extractores.pinnacle import extraer_pinnacle, obtener_pinnacle_fresco
 from extractores.oraculo_gratis import extraer_oraculo_gratis_en_vivo
 from normalizador.emparejador import normalizar_filas
 from estrategias.motor_cuantitativo import detectar_oportunidades_cuantitativas
@@ -44,22 +44,6 @@ logger = logging.getLogger("OrquestadorCuantitativo")
 
 RUTA_CSV_CRUCES = DIRECTORIO_DATOS / "auditoria_cruces_normalizados.csv"
 RUTA_CSV_ACCIONABLES = DIRECTORIO_DATOS / "oportunidades_accionables.csv"
-
-
-def cargar_cache_pinnacle() -> List[Dict[str, Any]]:
-    """Carga los mercados de Pinnacle (`pin_`) desde el CSV local si existe, sin gastar tokens de The-Odds-API."""
-    if not RUTA_CSV_CONSOLIDADO.exists():
-        return []
-    try:
-        df_prev = pd.read_csv(RUTA_CSV_CONSOLIDADO)
-        df_pin = df_prev[
-            (df_prev["Plataforma"] == "Pinnacle")
-            & (df_prev["ID_Mercado"].astype(str).str.startswith("pin_"))
-        ].fillna("N/A")
-        return df_pin.to_dict(orient="records")
-    except Exception as exc:
-        logger.warning("No se pudo leer caché local de Pinnacle: %s", exc)
-        return []
 
 
 def guardar_artefactos(
@@ -112,8 +96,7 @@ def ejecutar_pipeline(
 ) -> Dict[str, Any]:
     """
     Ejecuta el ciclo de extracción, normalización y análisis cuantitativo.
-    - `enviar_telegram=False` por defecto (desactivado a pedido del usuario).
-    - `usar_odds_api_vivo=False` por defecto (no consume tokens de The-Odds-API a menos que se pida explícitamente).
+    - Jamás usa cuotas viejas guardadas en CSV: combina Pinnacle Real (TTL 45 min) + Oráculo en Vivo.
     """
     if usar_cache_local and RUTA_CSV_CONSOLIDADO.exists():
         logger.info("Cargando todos los mercados desde el CSV local para auditoría rápida (0 llamadas a APIs)...")
@@ -158,10 +141,13 @@ def ejecutar_pipeline(
             logger.info("Consultando The-Odds-API (Pinnacle) en vivo...")
             mercados_pinnacle = extraer_pinnacle(max_deportes=6) + mercados_oraculo_gratis
         else:
-            mercados_pinnacle = mercados_oraculo_gratis + cargar_cache_pinnacle()
+            mercados_pinnacle_fresco = obtener_pinnacle_fresco(ttl_minutos=45.0, max_deportes=6)
+            mercados_pinnacle = mercados_pinnacle_fresco + mercados_oraculo_gratis
             logger.info(
-                "Oráculo combinado listo: %d mercados de referencia en vivo (0 tokens gastados de The-Odds-API).",
+                "Oráculo combinado 100%% fresco listo: %d mercados en vivo (%d Pinnacle Real + %d ActionNetwork/ESPN).",
                 len(mercados_pinnacle),
+                len(mercados_pinnacle_fresco),
+                len(mercados_oraculo_gratis),
             )
 
         todos_crudos = (
