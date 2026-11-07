@@ -247,28 +247,50 @@ def extraer_pinnacle(max_deportes: int = 6) -> List[Dict[str, Any]]:
     return filas_normalizadas
 
 
-def obtener_pinnacle_fresco(ttl_minutos: float = 45.0, max_deportes: int = 6) -> List[Dict[str, Any]]:
+def obtener_pinnacle_fresco(
+    ttl_validez_minutos: float = 25.0,
+    intervalo_recarga_minutos: float = 180.0,
+    max_deportes: int = 3,
+) -> List[Dict[str, Any]]:
     """
-    Obtiene cuotas de Pinnacle Real vía The-Odds-API con TTL estricto (por defecto 45 minutos).
-    - JAMÁS devuelve cuotas viejas (> ttl_minutos) para evitar falso EV por líneas vencidas.
-    - Rota entre las 4 keys configuradas en ODDS_API_KEYS.
+    Modo Guardián de Tokens para Pinnacle Real (The-Odds-API):
+    1. Si la caché tiene <= `ttl_validez_minutos` (25 min), devuelve las cuotas frescas.
+    2. Si tiene entre 25 min y `intervalo_recarga_minutos` (180 min = 3h), devuelve `[]`
+       (descarta las cuotas para NUNCA usar líneas viejas, pero NO gasta tokens de la API todavía).
+    3. Recién cuando pasaron >= 180 min (y estamos en horario deportivo 14:00-04:00 UTC),
+       consulta The-Odds-API rotando entre las 4 keys (~4 llamadas/día = alcanza para todo el mes).
     """
+    from datetime import datetime, timezone
+
     ahora_ts = time.time()
+    edad_min = 999999.0
     if RUTA_CACHE_PINNACLE_FRESCO.exists():
         try:
             payload = json.loads(RUTA_CACHE_PINNACLE_FRESCO.read_text(encoding="utf-8"))
             ts_guardado = float(payload.get("timestamp_utc", 0.0))
             edad_min = (ahora_ts - ts_guardado) / 60.0
-            if edad_min <= ttl_minutos and isinstance(payload.get("mercados"), list):
+            if edad_min <= ttl_validez_minutos and isinstance(payload.get("mercados"), list):
                 logger.info(
-                    "Pinnacle Real (TTL fresco %.1f min <= %.1f min): %d mercados cargados.",
+                    "Pinnacle Real fresco (%.1f min <= %.1f min): %d mercados cargados (0 tokens).",
                     edad_min,
-                    ttl_minutos,
+                    ttl_validez_minutos,
                     len(payload["mercados"]),
                 )
                 return payload["mercados"]
+            if edad_min < intervalo_recarga_minutos:
+                logger.info(
+                    "Guardián de Tokens: caché Pinnacle de %.0f min descartada por antigüedad (próxima recarga en %.0f min, 0 tokens gastados).",
+                    edad_min,
+                    intervalo_recarga_minutos - edad_min,
+                )
+                return []
         except Exception as exc:
             logger.warning("No se pudo leer cache_pinnacle_fresco.json: %s", exc)
+
+    hora_utc = datetime.now(tz=timezone.utc).hour
+    if 4 <= hora_utc < 13:
+        logger.info("Guardián de Tokens: horario nocturno (%02d:00 UTC), ahorrando tokens de The-Odds-API.", hora_utc)
+        return []
 
     mercados_vivos = extraer_pinnacle(max_deportes=max_deportes)
     if mercados_vivos:

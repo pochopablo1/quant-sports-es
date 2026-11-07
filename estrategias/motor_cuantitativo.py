@@ -180,7 +180,10 @@ def detectar_oportunidades_cuantitativas(
         c2_neta = cuota_neta_despues_de_comision(c2_bruta, plat_mkt)
         comision_pct = round(COMISION_GANANCIA_PLATAFORMA.get(plat_mkt, 0.0) * 100.0, 2)
 
-        # 1. Emparejar contra Pinnacle (Benchmark Sharp) o contra Kalshi/Polymarket profundo
+        # 1. Jerarquía de Oráculo en Vivo:
+        #    Prioridad 1: Pinnacle Real fresco (<=25 min)
+        #    Prioridad 2: Kalshi / Polymarket CLOB profundo (Liquidez >= $250 en ambos lados, spread cerrado)
+        #    Prioridad 3: Consenso en Vivo ActionNetwork / ESPN DraftKings (100% vivo, 0 tokens)
         ref, invertido, similitud = emparejar_con_referencia(
             mkt, mercados_pinnacle, umbral_similitud=85.0
         )
@@ -190,6 +193,10 @@ def detectar_oportunidades_cuantitativas(
             ]
             ref, invertido, similitud = emparejar_con_referencia(
                 mkt, candidatos_clob, umbral_similitud=86.0
+            )
+        if not ref:
+            ref, invertido, similitud = emparejar_con_referencia(
+                mkt, mercados_sanity_check, umbral_similitud=86.0
             )
 
         if ref:

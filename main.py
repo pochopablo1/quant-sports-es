@@ -141,7 +141,11 @@ def ejecutar_pipeline(
             logger.info("Consultando The-Odds-API (Pinnacle) en vivo...")
             mercados_pinnacle = extraer_pinnacle(max_deportes=6) + mercados_oraculo_gratis
         else:
-            mercados_pinnacle_fresco = obtener_pinnacle_fresco(ttl_minutos=15.0, max_deportes=6)
+            mercados_pinnacle_fresco = obtener_pinnacle_fresco(
+                ttl_validez_minutos=25.0,
+                intervalo_recarga_minutos=180.0,
+                max_deportes=3,
+            )
             mercados_pinnacle = mercados_pinnacle_fresco + mercados_oraculo_gratis
             logger.info(
                 "Oráculo combinado 100%% fresco listo: %d mercados en vivo (%d Pinnacle Real + %d ActionNetwork/ESPN).",
