@@ -305,7 +305,7 @@ def ejecutar_barrido_oportunidades(
                     ev_vivo_pct = round(((cuota_vwap * prob_justa) - 1.0) * 100.0, 2)
                     if cuota_vwap > 1.85:
                         estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 1.85 tope Favorito Puro >= $0.54)"
-                    elif ev_vivo_pct >= 3.0:
+                    elif ev_vivo_pct >= 2.0:
                         if not modo_simulacion:
                             if plat == "Polymarket":
                                 partes_tok = str(id_mkt).split("::")

@@ -133,7 +133,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Daemon 24/7 de Micro-Apuestas Cuantitativas ($2.50 a $6.00 USD)")
     parser.add_argument("--intervalo-minutos", type=float, default=10.0, help="Minutos entre cada barrido en vivo")
     parser.add_argument("--meta-diaria", type=float, default=90.0, help="Presupuesto diario a rotar en USD")
-    parser.add_argument("--max-ciclos", type=int, default=1, help="Cantidad de ciclos a ejecutar (0 = infinito 24/7)")
+    parser.add_argument("--max-ciclos", type=int, default=0, help="Cantidad de ciclos a ejecutar (0 = infinito 24/7)")
     parser.add_argument("--solo-local", action="store_true", help="Usar cache local sin llamar APIs externas")
     parser.add_argument("--horas-telegram", type=float, default=2.0, help="Intervalo en horas para reporte en Telegram")
     args = parser.parse_args()
