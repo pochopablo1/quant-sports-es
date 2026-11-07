@@ -123,7 +123,7 @@ def ejecutar_pipeline(
         logger.info(
             "Iniciando extracción en vivo de exchanges gratuitos (Polymarket, Kalshi, SX Bet, Limitless, Futuur, Manifold, Azuro V3, Smarkets)..."
         )
-        mercados_poly = extraer_polymarket(limite=80)
+        mercados_poly = extraer_polymarket(limite=100, paginas=5)
         logger.info("Polymarket: %d mercados extraídos", len(mercados_poly))
 
         mercados_kalshi = extraer_kalshi()

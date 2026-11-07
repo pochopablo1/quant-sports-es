@@ -127,7 +127,7 @@ ALIAS_EQUIPOS_CANONICOS = {
     "wizards": "washington wizards",
     "trail blazers": "portland trail blazers",
     "blazers": "portland trail blazers",
-    # Abreviaturas / Ciudades de Kalshi
+    # Abreviaturas / Ciudades de Kalshi y NCAA
     "was commanders": "washington commanders",
     "sf 49ers": "san francisco 49ers",
     "san francisco": "san francisco 49ers",
@@ -143,6 +143,72 @@ ALIAS_EQUIPOS_CANONICOS = {
     "new orleans": "new orleans saints",
     "tampa bay": "tampa bay rays",
     "cleveland": "cleveland guardians",
+    "nc state": "north carolina state",
+    "ole miss": "mississippi",
+    "usc": "southern california",
+    "ucf": "central florida",
+    "smu": "southern methodist",
+    "tcu": "texas christian",
+    "byu": "brigham young",
+    "lsu": "louisiana state",
+    "fsu": "florida state",
+    "psu": "penn state",
+    "msu": "michigan state",
+    "osu": "ohio state",
+    "ksu": "kansas state",
+    "isu": "iowa state",
+    "wsu": "washington state",
+    "asu": "arizona state",
+    "utep": "texas el paso",
+    "utsa": "texas san antonio",
+    "unlv": "nevada las vegas",
+    "uab": "alabama birmingham",
+    "uconn": "connecticut",
+    "umass": "massachusetts",
+    "man utd": "manchester united",
+    "man united": "manchester united",
+    "man city": "manchester city",
+}
+
+# Tokens direccionales o institucionales que distinguen universidades/clubes distintos:
+# Ej. "Western Kentucky" != "Kentucky", "Middle Tennessee" != "Tennessee",
+#     "Georgia Tech" != "Georgia" != "Georgia State", "North Texas" != "Texas".
+TOKENS_DISTINTIVOS_ESTRICTO = {
+    "north",
+    "south",
+    "east",
+    "west",
+    "northern",
+    "southern",
+    "eastern",
+    "western",
+    "central",
+    "middle",
+    "coastal",
+    "state",
+    "tech",
+    "poly",
+    "am",
+    "christian",
+    "methodist",
+    "baptist",
+    "catholic",
+    "international",
+    "atlantic",
+    "pacific",
+    "valley",
+    "southeastern",
+    "southwestern",
+    "northeastern",
+    "northwestern",
+    "women",
+    "womens",
+    "femenino",
+    "fem",
+    "u20",
+    "u21",
+    "u23",
+    "reserves",
 }
 
 TRADUCCIONES_DEPORTE = {
@@ -258,6 +324,8 @@ def fechas_compatibles(fecha_a: Any, fecha_b: Any, max_horas: float = 18.0) -> b
 def similitud_equipos(nombre_a: str, nombre_b: str) -> float:
     """
     Calcula puntaje de similitud (0 a 100) entre nombres de equipos ya canonizados.
+    Bloquea falsos positivos entre universidades/clubes con modificadores distintos
+    (ej. 'Western Kentucky' vs 'Kentucky', 'Middle Tennessee' vs 'Tennessee', 'Georgia Tech' vs 'Georgia').
     """
     limpio_a = limpiar_texto(nombre_a)
     limpio_b = limpiar_texto(nombre_b)
@@ -265,6 +333,18 @@ def similitud_equipos(nombre_a: str, nombre_b: str) -> float:
         return 0.0
     if limpio_a == limpio_b:
         return 100.0
+
+    tokens_a = set(limpio_a.split())
+    tokens_b = set(limpio_b.split())
+
+    # Si uno tiene un modificador direccional/institucional (ej. 'western', 'middle', 'state', 'tech') y el otro no, son equipos distintos
+    if (tokens_a ^ tokens_b) & TOKENS_DISTINTIVOS_ESTRICTO:
+        return 0.0
+
+    # Evitar cruzar rivales de la misma ciudad como 'Manchester City' vs 'Manchester United'
+    if ("city" in tokens_a and "united" in tokens_b) or ("united" in tokens_a and "city" in tokens_b):
+        return 0.0
+
     puntaje_set = fuzz.token_set_ratio(limpio_a, limpio_b)
     puntaje_sort = fuzz.token_sort_ratio(limpio_a, limpio_b)
     return 0.60 * puntaje_set + 0.40 * puntaje_sort

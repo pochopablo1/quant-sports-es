@@ -6,6 +6,7 @@ Reemplaza y complementa a The-Odds-API combinando dos fuentes públicas en vivo:
 2. ESPN / DraftKings Live Scoreboard API (`site.api.espn.com/apis/site/v2/sports/{deporte}/{liga}/scoreboard`)
    -> Cuotas en vivo de DraftKings Sportsbook (Moneyline, Point Spread, Over/Under, 1X2).
 """
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import List, Dict, Any, Optional
 import requests
@@ -22,21 +23,32 @@ LIGAS_ACTION_NETWORK = [
     ("ufc", "MMA / Boxeo", "UFC"),
     ("ncaaf", "Fútbol Americano", "NCAAF"),
     ("ncaab", "Básquetbol", "NCAAB"),
+    ("atp", "Tenis", "ATP"),
+    ("wta", "Tenis", "WTA"),
 ]
 
 LIGAS_ESPN_DRAFTKINGS = [
     ("basketball/nba", "Básquetbol", "NBA"),
+    ("basketball/mens-college-basketball", "Básquetbol", "NCAAB"),
     ("football/nfl", "Fútbol Americano", "NFL"),
+    ("football/college-football", "Fútbol Americano", "NCAAF"),
     ("hockey/nhl", "Hockey sobre Hielo", "NHL"),
     ("baseball/mlb", "Béisbol", "MLB"),
     ("mma/ufc", "MMA / Boxeo", "UFC"),
+    ("tennis/atp", "Tenis", "ATP"),
+    ("tennis/wta", "Tenis", "WTA"),
     ("soccer/eng.1", "Fútbol", "Premier League"),
     ("soccer/esp.1", "Fútbol", "La Liga"),
     ("soccer/ita.1", "Fútbol", "Serie A"),
     ("soccer/ger.1", "Fútbol", "Bundesliga"),
     ("soccer/fra.1", "Fútbol", "Ligue 1"),
     ("soccer/uefa.champions", "Fútbol", "UEFA Champions League"),
+    ("soccer/uefa.europa", "Fútbol", "UEFA Europa League"),
+    ("soccer/uefa.europa.conf", "Fútbol", "UEFA Conference League"),
     ("soccer/usa.1", "Fútbol", "MLS"),
+    ("soccer/bra.1", "Fútbol", "Brasileirão"),
+    ("soccer/arg.1", "Fútbol", "Liga Argentina"),
+    ("soccer/mex.1", "Fútbol", "Liga MX"),
 ]
 
 
@@ -202,22 +214,32 @@ def extraer_action_network() -> List[Dict[str, Any]]:
 
 
 def extraer_espn_draftkings() -> List[Dict[str, Any]]:
-    """Extrae cuotas en vivo de DraftKings desde la API pública de ESPN (0 tokens)."""
+    """Extrae cuotas en vivo de DraftKings desde la API pública de ESPN (0 tokens) para hoy y mañana."""
     filas: List[Dict[str, Any]] = []
     headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+    ahora_utc = datetime.now(tz=timezone.utc)
+    fechas_consulta = [
+        ahora_utc.strftime("%Y%m%d"),
+        (ahora_utc + timedelta(days=1)).strftime("%Y%m%d"),
+    ]
+    ids_vistos = set()
 
     for ruta_deporte, deporte_es, liga_es in LIGAS_ESPN_DRAFTKINGS:
         url = f"https://site.api.espn.com/apis/site/v2/sports/{ruta_deporte}/scoreboard"
-        try:
-            resp = requests.get(url, headers=headers, timeout=8)
-            if resp.status_code != 200:
-                continue
-            eventos = resp.json().get("events") or []
-        except Exception as exc:
-            logger.debug("Error ESPN %s: %s", ruta_deporte, exc)
-            continue
+        eventos_liga = []
+        for fecha_str in fechas_consulta:
+            try:
+                resp = requests.get(url, params={"dates": fecha_str, "limit": "200"}, headers=headers, timeout=8)
+                if resp.status_code == 200:
+                    eventos_liga.extend(resp.json().get("events") or [])
+            except Exception as exc:
+                logger.debug("Error ESPN %s (%s): %s", ruta_deporte, fecha_str, exc)
 
-        for ev in eventos:
+        for ev in eventos_liga:
+            id_ev_unico = str(ev.get("id", ""))
+            if not id_ev_unico or id_ev_unico in ids_vistos:
+                continue
+            ids_vistos.add(id_ev_unico)
             estado_tipo = (ev.get("status") or {}).get("type") or {}
             if estado_tipo.get("state") in ("in", "post"):
                 continue

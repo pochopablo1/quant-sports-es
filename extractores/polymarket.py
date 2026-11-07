@@ -67,7 +67,7 @@ def parsear_campo_json(valor: Any) -> List[Any]:
     return []
 
 
-def extraer_polymarket(limite: int = 100, paginas: int = 3) -> List[Dict[str, Any]]:
+def extraer_polymarket(limite: int = 100, paginas: int = 5) -> List[Dict[str, Any]]:
     """
     Consulta los eventos deportivos activos en Polymarket (hasta `paginas * limite` eventos)
     y normaliza tanto mercados de 2 vías como fútbol 3-way (1X2) al esquema estándar en español.
@@ -144,12 +144,22 @@ def extraer_polymarket(limite: int = 100, paginas: int = 3) -> List[Dict[str, An
                 for m_item in moneylines_yes_no:
                     ids_mercados_3way_procesados.add(m_item.get("id"))
                 m1, m2 = m_equipos[0], m_equipos[1]
-                p1 = float(m1.get("bestAsk") or (parsear_campo_json(m1.get("outcomePrices")) or [0])[0] or 0.0)
-                p2 = float(m2.get("bestAsk") or (parsear_campo_json(m2.get("outcomePrices")) or [0])[0] or 0.0)
-                p_draw = float(m_draw.get("bestAsk") or (parsear_campo_json(m_draw.get("outcomePrices")) or [0])[0] or 0.0)
+                p1 = float(m1.get("bestAsk") or 0.0)
+                p2 = float(m2.get("bestAsk") or 0.0)
+                p_draw = float(m_draw.get("bestAsk") or 0.0)
+                sp1 = float(m1.get("spread") or 1.0)
+                sp2 = float(m2.get("spread") or 1.0)
                 toks_1 = parsear_campo_json(m1.get("clobTokenIds"))
                 toks_2 = parsear_campo_json(m2.get("clobTokenIds"))
-                if 0.01 < p1 < 0.99 and 0.01 < p2 < 0.99 and 0.01 < p_draw < 0.99 and toks_1 and toks_2:
+                if (
+                    0.02 < p1 < 0.98
+                    and 0.02 < p2 < 0.98
+                    and 0.02 < p_draw < 0.98
+                    and sp1 <= 0.10
+                    and sp2 <= 0.10
+                    and toks_1
+                    and toks_2
+                ):
                     c1 = round(1.0 / p1, 4)
                     c2 = round(1.0 / p2, 4)
                     c_draw = round(1.0 / p_draw, 4)
@@ -207,18 +217,15 @@ def extraer_polymarket(limite: int = 100, paginas: int = 3) -> List[Dict[str, An
             # Para una ejecución Taker real, comprar Lado_1 paga `bestAsk`, y comprar Lado_2 equivale a `1.0 - bestBid`.
             best_ask_1 = float(mercado.get("bestAsk") or 0.0)
             best_bid_1 = float(mercado.get("bestBid") or 0.0)
-            spread_libro = float(mercado.get("spread") or 0.0)
+            spread_libro = float(mercado.get("spread") or 1.0)
 
-            # Descartar mercados fantasma sin puntas activas o con spread mayor a 12 centavos
-            if best_ask_1 > 0.01 and best_bid_1 > 0.01 and spread_libro <= 0.12:
+            # Exigir puntas Taker reales y activas en el CLOB con spread <= 10 centavos.
+            # NUNCA usar precio_mid cuando el libro está vacío (evita falsos precios en spreads alternativos sin liquidez).
+            if best_ask_1 > 0.02 and best_bid_1 > 0.02 and spread_libro <= 0.10:
                 precio_1 = best_ask_1
                 precio_2 = round(1.0 - best_bid_1, 4)
             else:
-                # Si no reporta bestAsk/bestBid cerrado, descartar si los precios son exactamente 0.5/0.5 sin volumen
-                if abs(precio_mid_1 - 0.5) < 0.001 and float(mercado.get("volumeNum") or 0) < 100:
-                    continue
-                precio_1 = precio_mid_1
-                precio_2 = precio_mid_2
+                continue
 
             # Descartar mercados resueltos o sin cotización real (ej. precio 0 o 1)
             if not (0.01 < precio_1 < 0.99 and 0.01 < precio_2 < 0.99):

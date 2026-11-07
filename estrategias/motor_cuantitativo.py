@@ -31,11 +31,11 @@ LIQUIDEZ_MINIMA_USD = 35.0
 # - MOTOR 1 (Value Favorito): +$18.75 USD reales en 189 partidos (GANADOR comprobado manteniendo al final)
 # - MOTOR 2 (Surebet Arbitraje): +$6.47 USD reales en 41 de 41 partidos (100% Win Rate comprobado)
 # - MOTOR 3 (Scalping Longshots): DESACTIVADO (causaba -$137.78 USD si no se revendía antes del partido)
-UMBRAL_EV_FAVORITO_PCT = 3.5
+UMBRAL_EV_FAVORITO_PCT = 2.0
 CUOTA_MAXIMA_FAVORITO = 1.85          # Solo verdaderos favoritos (Precio >= $0.54, Probabilidad Real >= 56%)
 UMBRAL_ROI_SUREBET_PCT = 1.0          # 100% Win Rate comprobado (41/41 en PythonAnywhere)
 HABILITAR_MOTOR_3_TRADING_PRE = False # Apagado: eliminamos 100% el riesgo de quedarse clavado en cuotas altas
-UMBRAL_EV_TRADING_PRE_PCT = 3.5
+UMBRAL_EV_TRADING_PRE_PCT = 2.0
 CUOTA_MAXIMA_TRADING_PRE = 1.85
 MAX_OVERROUND_TRADING_PRE_PCT = 4.0
 VENTANA_MAXIMA_HORAS_PRE = 36.0       # Rotación rápida: solo eventos que se juegan dentro de las próximas 36 horas
@@ -45,7 +45,7 @@ MAX_EV_REALISTA_PCT = 18.0
 MAX_ROI_ARBITRAJE_REALISTA_PCT = 10.0
 
 COMISION_GANANCIA_PLATAFORMA = {
-    "Polymarket": 0.02,
+    "Polymarket": 0.00,
     "SX Bet": 0.00,
     "Azuro V3": 0.00,
     "Limitless": 0.005,
@@ -142,7 +142,9 @@ def detectar_oportunidades_cuantitativas(
         m
         for m in mercados_exchanges
         if m.get("Plataforma") in ("Kalshi", "Polymarket")
-        and (float(m.get("Liquidez_1_USD") or 0) >= 250.0)
+        and float(m.get("Liquidez_1_USD") or 0) >= 250.0
+        and float(m.get("Liquidez_2_USD") or 0) >= 250.0
+        and 0.0 <= float(m.get("Overround_Libro_Pct") or 99.0) <= 5.5
     ]
     mercados_liquidos_para_arb = [
         e

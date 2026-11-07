@@ -6,6 +6,7 @@ Convierte precios `yes_ask_dollars` / `no_ask_dollars` a cuotas decimales Taker.
 """
 import logging
 import re
+import time
 from typing import List, Dict, Any, Tuple
 import requests
 from configuracion import calcular_overround_pct
@@ -19,9 +20,15 @@ SERIES_DEPORTIVAS_KALSHI: List[Tuple[str, str, str, str]] = [
     ("KXNBAGAME", "Básquetbol", "NBA", "moneyline"),
     ("KXNBASPREAD", "Básquetbol", "NBA", "spread"),
     ("KXNBATOTAL", "Básquetbol", "NBA", "total"),
+    ("KXNCAABGAME", "Básquetbol", "NCAAB", "moneyline"),
+    ("KXNCAABSPREAD", "Básquetbol", "NCAAB", "spread"),
+    ("KXNCAABTOTAL", "Básquetbol", "NCAAB", "total"),
     ("KXNFLGAME", "Fútbol Americano", "NFL", "moneyline"),
     ("KXNFLSPREAD", "Fútbol Americano", "NFL", "spread"),
     ("KXNFLTOTAL", "Fútbol Americano", "NFL", "total"),
+    ("KXNCAAFGAME", "Fútbol Americano", "NCAAF", "moneyline"),
+    ("KXNCAAFSPREAD", "Fútbol Americano", "NCAAF", "spread"),
+    ("KXNCAAFTOTAL", "Fútbol Americano", "NCAAF", "total"),
     ("KXMLBGAME", "Béisbol", "MLB", "moneyline"),
     ("KXMLBSPREAD", "Béisbol", "MLB", "spread"),
     ("KXMLBTOTAL", "Béisbol", "MLB", "total"),
@@ -76,7 +83,11 @@ def extraer_kalshi() -> List[Dict[str, Any]]:
             "limit": "100",
         }
         try:
+            time.sleep(0.22)
             resp = requests.get(URL_KALSHI_EVENTS, params=parametros, timeout=12)
+            if resp.status_code == 429:
+                time.sleep(1.5)
+                resp = requests.get(URL_KALSHI_EVENTS, params=parametros, timeout=12)
             if resp.status_code != 200:
                 logger.warning("Kalshi devolvió %s para %s", resp.status_code, series_ticker)
                 continue
