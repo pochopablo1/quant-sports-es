@@ -31,8 +31,9 @@ LIQUIDEZ_MINIMA_USD = 35.0
 # - MOTOR 1 (Value Favorito): +$18.75 USD reales en 189 partidos (GANADOR comprobado manteniendo al final)
 # - MOTOR 2 (Surebet Arbitraje): +$6.47 USD reales en 41 de 41 partidos (100% Win Rate comprobado)
 # - MOTOR 3 (Scalping Longshots): DESACTIVADO (causaba -$137.78 USD si no se revendía antes del partido)
-UMBRAL_EV_FAVORITO_PCT = 2.0
-CUOTA_MAXIMA_FAVORITO = 1.85          # Solo verdaderos favoritos (Precio >= $0.54, Probabilidad Real >= 56%)
+UMBRAL_EV_FAVORITO_PCT = 0.45
+CUOTA_MINIMA_FAVORITO = 1.16          # Evita favoritos extremos (> $0.86) donde 1 centavo de tick es enorme
+CUOTA_MAXIMA_FAVORITO = 1.85          # Solo verdaderos favoritos (Precio $0.54 a $0.86, Probabilidad Real >= 55%)
 UMBRAL_ROI_SUREBET_PCT = 1.0          # 100% Win Rate comprobado (41/41 en PythonAnywhere)
 HABILITAR_MOTOR_3_TRADING_PRE = False # Apagado: eliminamos 100% el riesgo de quedarse clavado en cuotas altas
 UMBRAL_EV_TRADING_PRE_PCT = 2.0
@@ -147,9 +148,9 @@ def detectar_oportunidades_cuantitativas(
         m
         for m in mercados_exchanges
         if m.get("Plataforma") in ("Kalshi", "Polymarket")
-        and float(m.get("Liquidez_1_USD") or 0) >= 250.0
-        and float(m.get("Liquidez_2_USD") or 0) >= 250.0
-        and 0.0 <= float(m.get("Overround_Libro_Pct") or 99.0) <= 5.5
+        and float(m.get("Liquidez_1_USD") or 0) >= 100.0
+        and float(m.get("Liquidez_2_USD") or 0) >= 100.0
+        and 0.0 <= float(m.get("Overround_Libro_Pct") or 99.0) <= 7.0
     ]
     mercados_liquidos_para_arb = [
         e
@@ -182,8 +183,9 @@ def detectar_oportunidades_cuantitativas(
 
         # 1. Jerarquía de Oráculo en Vivo:
         #    Prioridad 1: Pinnacle Real fresco (<=25 min)
-        #    Prioridad 2: Kalshi / Polymarket CLOB profundo (Liquidez >= $250 en ambos lados, spread cerrado)
-        #    Prioridad 3: Consenso en Vivo ActionNetwork / ESPN DraftKings (100% vivo, 0 tokens)
+        #    Prioridad 2 & 3: Evaluamos tanto Vegas en Vivo (Consenso ActionNetwork / ESPN DraftKings)
+        #    como el CLOB profundo de Kalshi/Polymarket, eligiendo la referencia verificada con mayor señal
+        #    (para que el rezago conjunto entre Polymarket y Kalshi no oculte un movimiento real de Vegas).
         ref, invertido, similitud = emparejar_con_referencia(
             mkt, mercados_pinnacle, umbral_similitud=85.0
         )
@@ -191,20 +193,38 @@ def detectar_oportunidades_cuantitativas(
             candidatos_clob = [
                 r for r in mercados_clob_profundos if r.get("Plataforma") != plat_mkt
             ]
-            ref, invertido, similitud = emparejar_con_referencia(
-                mkt, candidatos_clob, umbral_similitud=86.0
-            )
-        if not ref:
-            ref, invertido, similitud = emparejar_con_referencia(
+            ref_an, inv_an, sim_an = emparejar_con_referencia(
                 mkt, mercados_sanity_check, umbral_similitud=86.0
             )
+            ref_clob, inv_clob, sim_clob = emparejar_con_referencia(
+                mkt, candidatos_clob, umbral_similitud=86.0
+            )
+            if ref_an and ref_clob:
+                # Calcular ventaja preliminar en cada oráculo para elegir el que detecta la ineficiencia
+                c1_a = float(ref_an.get("Cuota_Taker_2" if inv_an else "Cuota_Taker_1") or 0.0)
+                c2_a = float(ref_an.get("Cuota_Taker_1" if inv_an else "Cuota_Taker_2") or 0.0)
+                c1_k = float(ref_clob.get("Cuota_Taker_2" if inv_clob else "Cuota_Taker_1") or 0.0)
+                c2_k = float(ref_clob.get("Cuota_Taker_1" if inv_clob else "Cuota_Taker_2") or 0.0)
+                p1_a, p2_a, _, _ = devig_multiplicativo(c1_a, c2_a) if (c1_a > 1.01 and c2_a > 1.01) else (0.0, 0.0, 0.0, 0.0)
+                p1_k, p2_k, _, _ = devig_multiplicativo(c1_k, c2_k) if (c1_k > 1.01 and c2_k > 1.01) else (0.0, 0.0, 0.0, 0.0)
+                ev_max_an = max(c1_neta * p1_a - 1.0, c2_neta * p2_a - 1.0)
+                ev_max_clob = max(c1_neta * p1_k - 1.0, c2_neta * p2_k - 1.0)
+                if ev_max_an >= ev_max_clob:
+                    ref, invertido, similitud = ref_an, inv_an, sim_an
+                else:
+                    ref, invertido, similitud = ref_clob, inv_clob, sim_clob
+            elif ref_an:
+                ref, invertido, similitud = ref_an, inv_an, sim_an
+            else:
+                ref, invertido, similitud = ref_clob, inv_clob, sim_clob
 
         if ref:
             c1_ref = float(ref.get("Cuota_Taker_2" if invertido else "Cuota_Taker_1") or 0.0)
             c2_ref = float(ref.get("Cuota_Taker_1" if invertido else "Cuota_Taker_2") or 0.0)
             c_empate_ref = _extraer_cuota_empate(str(ref.get("Linea", "")))
+            es_1x2 = "1x2" in str(mkt.get("Tipo_Mercado", "")).lower()
 
-            if c1_ref > 1.01 and c2_ref > 1.01:
+            if c1_ref > 1.01 and c2_ref > 1.01 and (not es_1x2 or c_empate_ref > 1.01):
                 if c_empate_ref > 1.01:
                     prob_justa_1, prob_justa_2, _, cuota_justa_1, cuota_justa_2, _ = (
                         devig_multiplicativo_3way(c1_ref, c2_ref, c_empate_ref)
@@ -243,7 +263,7 @@ def detectar_oportunidades_cuantitativas(
                     }
                 )
 
-                # Analizar cada lado para clasificar en MOTOR 1 (Value Favorito <= 2.10) o MOTOR 3 (Trading Pre-Partido)
+                # Analizar cada lado para clasificar en MOTOR 1 (Value Favorito <= 1.85) o MOTOR 3 (Trading Pre-Partido)
                 for idx_lado, nombre_lado, c_bruta, c_neta, c_justa, p_justa, ev_neto, liq_lado in [
                     (1, mkt["Lado_1"], c1_bruta, c1_neta, cuota_justa_1, prob_justa_1, ev_neto_1_pct, liq_1),
                     (2, mkt["Lado_2"], c2_bruta, c2_neta, cuota_justa_2, prob_justa_2, ev_neto_2_pct, liq_2),
@@ -254,9 +274,12 @@ def detectar_oportunidades_cuantitativas(
                     es_web3 = "SÍ (Wallet EVM)" if plat_mkt in PLATAFORMAS_EJECUTABLES_WEB3 else "No (KYC/Otro)"
                     prob_ganar_pct = round(p_justa * 100.0, 1)
 
-                    # --- MOTOR 1: VALUE BET EN FAVORITO REAL (EV >= 2% y Cuota <= 1.85) ---
-                    if ev_neto >= UMBRAL_EV_FAVORITO_PCT and c_bruta <= CUOTA_MAXIMA_FAVORITO:
-                        # Sanity Check con DraftKings / Action Network: si existe la línea en Consenso_AN_DK y contradice el valor (EV < -0.5%), descartar
+                    # --- MOTOR 1: VALUE BET EN FAVORITO REAL (EV >= 0.45% y 1.16 <= Cuota <= 1.85) ---
+                    if (
+                        ev_neto >= UMBRAL_EV_FAVORITO_PCT
+                        and CUOTA_MINIMA_FAVORITO <= c_bruta <= CUOTA_MAXIMA_FAVORITO
+                    ):
+                        # Sanity Check con DraftKings / Action Network: si existe la línea en Consenso_AN_DK y contradice fuertemente el valor (EV < -0.8%), descartar
                         ref_san, inv_san, _ = emparejar_con_referencia(mkt, mercados_sanity_check, umbral_similitud=85.0)
                         if ref_san:
                             c1_s = float(ref_san.get("Cuota_Taker_2" if inv_san else "Cuota_Taker_1") or 0.0)
@@ -264,7 +287,7 @@ def detectar_oportunidades_cuantitativas(
                             if c1_s > 1.01 and c2_s > 1.01:
                                 p1_s, p2_s, _, _ = devig_multiplicativo(c1_s, c2_s)
                                 p_s_lado = p1_s if idx_lado == 1 else p2_s
-                                if (c_neta * p_s_lado - 1.0) < -0.005:
+                                if (c_neta * p_s_lado - 1.0) < -0.008:
                                     continue
                         stake_sug = calcular_micro_stake_usd(ev_neto, liq_lado)
                         item_vb = {

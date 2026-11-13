@@ -206,16 +206,15 @@ def _verificar_pata_individual(
 
 
 def ejecutar_barrido_oportunidades(
-    ev_minimo_pct: float = 1.0,
+    ev_minimo_pct: float = 0.40,
     modo_simulacion: bool = True,
-    max_ordenes: int = 20,
+    max_ordenes: int = 30,
 ) -> List[Dict[str, Any]]:
     """
-    Lee `datos/oportunidades_accionables.csv`, procesa los 3 Motores del usuario:
-      - MOTOR 1 (Value Favorito <= 2.10, EV >= 4%)
+    Lee `datos/oportunidades_accionables.csv`, procesa los Motores del usuario:
+      - MOTOR 1 (Value Favorito 1.16 <= Cuota <= 1.85, EV >= 0.40%)
       - MOTOR 2 (Surebet Arbitraje >= 1.0%)
-      - MOTOR 3 (Trading Pre-Partido CLOB: compra Taker + orden de salida Maker)
-    verifica el orderbook en vivo al milisegundo y registra el plan de rotación de $200 USD/día.
+    verifica el orderbook en vivo al milisegundo y registra el plan de rotación diaria.
     """
     if not RUTA_ACCIONABLES.exists():
         logger.error("No existe %s. Ejecuta primero `python main.py`.", RUTA_ACCIONABLES)
@@ -226,21 +225,30 @@ def ejecutar_barrido_oportunidades(
         logger.info("No hay oportunidades accionables en este momento.")
         return []
 
-    # Filtrar oportunidades con ventaja >= ev_minimo_pct
-    candidatas = df[df["Ventaja_Neta_Pct"] >= ev_minimo_pct].head(max_ordenes)
+    # Priorizar Polymarket (ejecución real on-chain) y ordenar de mayor a menor ventaja matemática
+    df = df[df["Ventaja_Neta_Pct"] >= ev_minimo_pct].copy()
+    if df.empty:
+        logger.info("No hay oportunidades que superen el EV mínimo de %.2f%%.", ev_minimo_pct)
+        return []
+    df["_es_poly"] = (df["Plataforma_Entrada"].astype(str) == "Polymarket").astype(int)
+    df = df.sort_values(by=["_es_poly", "Ventaja_Neta_Pct"], ascending=[False, False])
+    if not modo_simulacion:
+        df = df[df["Plataforma_Entrada"].astype(str) == "Polymarket"]
+    candidatas = df.head(max_ordenes)
 
     ahora_iso = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Candado Global Anti-Duplicados (Histórico completo, no solo hoy):
-    # Jamás repetir apuesta en el mismo partido en días distintos ni acumular múltiples apuestas correlacionadas en un mismo Evento
+    # Candado Global Anti-Duplicados:
+    # En modo real solo bloquea contra órdenes reales previas (jamás deja que un test Paper bloquee una orden Real)
     claves_ejecutadas_historico = set()
     eventos_ejecutados_historico = set()
     if RUTA_HISTORIAL_EJECUCIONES.exists():
         try:
             df_prev = pd.read_csv(RUTA_HISTORIAL_EJECUCIONES)
             if not df_prev.empty and "Estado_Orden" in df_prev.columns:
+                patron_prev = "ORDEN_REAL|LISTA_SUREBET_REAL" if not modo_simulacion else "OK|EJECUTAD|ACTIVO"
                 df_aprobadas = df_prev[
-                    df_prev["Estado_Orden"].astype(str).str.contains("OK|EJECUTAD|ACTIVO", na=False)
+                    df_prev["Estado_Orden"].astype(str).str.contains(patron_prev, na=False)
                 ]
                 for _, r_ant in df_aprobadas.iterrows():
                     ev_ant = str(r_ant.get("Evento", "")).strip()
@@ -341,11 +349,11 @@ def ejecutar_barrido_oportunidades(
                 prob_justa = 1.0 / cuota_justa
                 if "MOTOR_1_VALUE_FAVORITO" in estrategia:
                     ev_vivo_pct = round(((cuota_vwap * prob_justa) - 1.0) * 100.0, 2)
-                    if cuota_vwap > 1.85:
-                        estado = f"DESCARTADA_CUOTA_ALTA ({cuota_vwap} > 1.85 tope Favorito Puro >= $0.54)"
+                    if cuota_vwap > 1.85 or cuota_vwap < 1.16:
+                        estado = f"DESCARTADA_FUERA_RANGO_FAVORITO ({cuota_vwap} fuera de [1.16, 1.85])"
                     elif stake_usd > 6.00:
                         estado = f"DESCARTADA_STAKE_MINIMO_5_SHARES (${stake_usd:.2f} supera tope de $6.00 USD)"
-                    elif ev_vivo_pct >= 2.0:
+                    elif ev_vivo_pct >= max(0.35, ev_minimo_pct):
                         if not modo_simulacion:
                             if plat == "Polymarket":
                                 partes_tok = str(id_mkt).split("::")

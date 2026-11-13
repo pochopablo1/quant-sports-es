@@ -35,7 +35,7 @@ def formatear_resumen_markdown(
     mms = oportunidades.get("market_making", [])
 
     lineas.append("")
-    lineas.append(f"🎯 *MOTOR 1 — Value en Favoritos (Cuota <= 2.10, EV >= 4%):* `{len(vbs)}`")
+    lineas.append(f"🎯 *MOTOR 1 — Value en Favoritos (1.16 <= Cuota <= 1.85, EV >= 0.45%):* `{len(vbs)}`")
     for v in vbs[:5]:
         lineas.append(
             f"  • [{v['Plataforma']}] *{v['Evento']}* ({v.get('Tipo_Mercado', '')})\n"

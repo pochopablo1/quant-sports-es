@@ -126,14 +126,17 @@ def obtener_radiografia_real_polymarket() -> dict:
             except Exception:
                 pass
 
-            # 2. Actividades de cobro (REDEEM = Apuestas Ganadas pagadas a tu pUSD)
+            # 2. Actividades de cobro (REDEEM = Apuestas Ganadas pagadas a tu pUSD) y reconstrucción de históricas
             try:
                 act_items = sc.list_activity().first_page().items
                 trades_por_cond = {}
+                conds_redimidas = set()
                 for a in act_items:
                     tipo_a = str(a.type.value if hasattr(a.type, "value") else a.type)
                     if tipo_a == "TRADE":
                         trades_por_cond[str(a.condition_id)] = {
+                            "titulo": str(a.title),
+                            "seleccion": str(a.outcome),
                             "costo_usd": round(float(a.amount), 2),
                             "precio": round(float(a.price), 2),
                             "shares": round(float(a.shares), 2),
@@ -142,6 +145,7 @@ def obtener_radiografia_real_polymarket() -> dict:
                     tipo_a = str(a.type.value if hasattr(a.type, "value") else a.type)
                     if tipo_a == "REDEEM":
                         cond_id = str(a.condition_id)
+                        conds_redimidas.add(cond_id)
                         cobrado = round(float(a.amount), 2)
                         info_tr = trades_por_cond.get(cond_id, {})
                         costo_est = info_tr.get("costo_usd", round(cobrado * 0.55, 2))
@@ -155,6 +159,16 @@ def obtener_radiografia_real_polymarket() -> dict:
                             "cobrado_usd": pago_real,
                             "ganancia_neta_usd": ganancia_neta,
                             "fecha": a.timestamp.strftime("%d/%m %H:%M"),
+                        })
+                # Si Polymarket archivó posiciones viejas en list_positions(), reconstruir cerradas no redimidas desde TRADE
+                titulos_abiertos = {x["titulo"] for x in abiertas}
+                titulos_perdidos = {x["titulo"] for x in perdidas}
+                for cond_id, tr in trades_por_cond.items():
+                    if cond_id not in conds_redimidas and tr["titulo"] not in titulos_abiertos and tr["titulo"] not in titulos_perdidos:
+                        perdidas.append({
+                            "titulo": tr["titulo"],
+                            "seleccion": tr["seleccion"],
+                            "costo_usd": tr["costo_usd"],
                         })
             except Exception:
                 pass
@@ -233,17 +247,17 @@ def generar_texto_resumen_telegram_hoy() -> str:
     return "\n".join(lineas)
 
 
-def mostrar_panel_hoy() -> None:
+def mostrar_panel_hoy(enviar_tg: bool = False) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     texto = generar_texto_resumen_telegram_hoy()
     print("\n" + "═" * 95)
     print(texto.replace("*", "").replace("`", ""))
     print("═" * 95 + "\n")
+    if enviar_tg:
+        ok = enviar_mensaje_telegram(texto)
+        print("Enviado a Telegram:", ok)
 
 
 if __name__ == "__main__":
-    mostrar_panel_hoy()
-    if "--enviar-telegram" in sys.argv:
-        ok = enviar_mensaje_telegram(generar_texto_resumen_telegram_hoy())
-        print("Enviado a Telegram:", ok)
+    mostrar_panel_hoy(enviar_tg=("--enviar-telegram" in sys.argv))

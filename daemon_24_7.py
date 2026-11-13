@@ -93,9 +93,9 @@ def iniciar_daemon(
                 usar_cache_local=solo_local,
             )
             resultados = ejecutar_barrido_oportunidades(
-                ev_minimo_pct=1.0,
+                ev_minimo_pct=0.40,
                 modo_simulacion=modo_sim,
-                max_ordenes=25,
+                max_ordenes=8,
             )
             aprobadas = [
                 r for r in resultados if any(k in r["Estado_Orden"] for k in ("OK", "EJECUTAD", "ACTIVO"))
@@ -105,6 +105,16 @@ def iniciar_daemon(
                 ciclo,
                 len(aprobadas),
             )
+            if aprobadas:
+                lineas_alerta = [
+                    f"🎯 *NUEVAS APUESTAS EJECUTADAS EN VIVO (Ciclo #{ciclo} - {etiqueta_modo}):* `{len(aprobadas)}`"
+                ]
+                for a in aprobadas:
+                    lineas_alerta.append(
+                        f"  • *{a['Evento']}* ➡️ `{a['Seleccion']}`\n"
+                        f"    Cuota: `{a['Cuota_VWAP_Real_Libro']}` | Stake: *${a['Stake_USD']:.2f} USD* | EV: `+{a['Ventaja_Viva_Pct']}%`"
+                    )
+                enviar_mensaje_telegram("\n".join(lineas_alerta))
 
         # Verificar si corresponde enviar el reporte de resumen cada 2 horas a Telegram
         ahora_ts = time.time()

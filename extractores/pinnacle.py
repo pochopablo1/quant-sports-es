@@ -35,16 +35,29 @@ DEPORTES_OBJETIVO = [
 
 def devig_multiplicativo(cuota_1: float, cuota_2: float) -> Tuple[float, float, float, float]:
     """
-    Aplica devigging multiplicativo a un par de cuotas de 2 vías.
+    Aplica devigging MPO / Shin (Margin Proportional to Odds: w_i = 1 - q_i) a un par de cuotas de 2 vías.
+    Corrige el sesgo Favorito-Longshot (donde las casas cargan la mayor parte del overround en el underdog)
+    y coincide con el devig multiplicativo cuando las cuotas son parejas (50/50 spreads y totales).
     Retorna: (prob_justa_1, prob_justa_2, cuota_justa_1, cuota_justa_2)
     """
     if cuota_1 <= 1.0 or cuota_2 <= 1.0:
         return 0.0, 0.0, 0.0, 0.0
-    inv_1 = 1.0 / cuota_1
-    inv_2 = 1.0 / cuota_2
-    suma_inv = inv_1 + inv_2
-    prob_justa_1 = inv_1 / suma_inv
-    prob_justa_2 = inv_2 / suma_inv
+    q1 = 1.0 / cuota_1
+    q2 = 1.0 / cuota_2
+    suma_inv = q1 + q2
+    overround = suma_inv - 1.0
+    if overround <= 0.0:
+        prob_justa_1 = q1 / suma_inv
+        prob_justa_2 = q2 / suma_inv
+    else:
+        w1 = max(0.001, 1.0 - q1)
+        w2 = max(0.001, 1.0 - q2)
+        w_sum = w1 + w2
+        p1_raw = max(0.01, min(0.99, q1 - overround * (w1 / w_sum)))
+        p2_raw = max(0.01, min(0.99, q2 - overround * (w2 / w_sum)))
+        s_norm = p1_raw + p2_raw
+        prob_justa_1 = p1_raw / s_norm
+        prob_justa_2 = p2_raw / s_norm
     return (
         round(prob_justa_1, 6),
         round(prob_justa_2, 6),
