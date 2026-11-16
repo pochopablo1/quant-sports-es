@@ -70,136 +70,35 @@ def ejecutar_oportunidades_surebets(
     nuevas_ejecuciones: List[Dict[str, Any]] = []
 
     candidatas: List[Dict[str, Any]] = []
-    casas_ejecutables = {"Polymarket", "SX Bet", "Limitless"}
+    # REGLA ESTRICTA DE SUREBET PURA:
+    # JAMÁS ejecutar 1 sola pata al descubierto contra Kalshi/Vegas.
+    # Para que el bot dispare dinero real automáticamente, AMBAS PATAS deben cubrirse.
+    casas_auto_2patas = {"Polymarket"}
 
-    # 1. Prioridad 1: Surebets EN VIVO (Motor E In-Play — cualquier cruce multi-plataforma con al menos 1 pata Web3)
-    for ip in cruces_inplay:
-        roi_oc = float(ip.get("ROI_OnChain_0Bps_Pct", -99.0))
-        roi_26 = float(ip.get("ROI_Neto_2026_Pct", -99.0))
-        mejor_roi = max(roi_oc, roi_26)
-        c1_casa = str(ip.get("Pata_1_Casa", ""))
-        c2_casa = str(ip.get("Pata_2_Casa", ""))
-        c1_cuota = float(ip.get("Pata_1_Cuota_Bruta", 0.0))
-        c2_cuota = float(ip.get("Pata_2_Cuota_Bruta", 0.0))
-
-        ambas_web3 = (c1_casa in casas_ejecutables) and (c2_casa in casas_ejecutables)
-        alguna_web3 = (c1_casa in casas_ejecutables) or (c2_casa in casas_ejecutables)
-
-        if ambas_web3 and mejor_roi >= 0.50:
-            candidatas.append({
-                "Tipo_Estrategia": "SUREBET_2PATAS_INPLAY",
-                "Evento": ip.get("Evento", ""),
-                "Deporte": ip.get("Deporte", ""),
-                "Mercado": ip.get("Mercado", ""),
-                "Pata_1_Casa": c1_casa,
-                "Pata_1_Seleccion": ip.get("Pata_1_Seleccion", ""),
-                "Pata_1_Cuota": c1_cuota,
-                "Pata_1_ID": ip.get("Pata_1_ID_Mercado", ""),
-                "Pata_1_Idx": int(ip.get("Pata_1_Indice_Lado", 1)),
-                "Pata_2_Casa": c2_casa,
-                "Pata_2_Seleccion": ip.get("Pata_2_Seleccion", ""),
-                "Pata_2_Cuota": c2_cuota,
-                "Pata_2_ID": ip.get("Pata_2_ID_Mercado", ""),
-                "Pata_2_Idx": int(ip.get("Pata_2_Indice_Lado", 2)),
-                "ROI_Esperado_Pct": mejor_roi,
-            })
-        elif alguna_web3 and mejor_roi >= 1.20:
-            candidatas.append({
-                "Tipo_Estrategia": "SNIPER_INPLAY_MULTIPLATAFORMA",
-                "Evento": ip.get("Evento", ""),
-                "Deporte": ip.get("Deporte", ""),
-                "Mercado": ip.get("Mercado", ""),
-                "Pata_1_Casa": c1_casa,
-                "Pata_1_Seleccion": ip.get("Pata_1_Seleccion", ""),
-                "Pata_1_Cuota": c1_cuota,
-                "Pata_1_ID": ip.get("Pata_1_ID_Mercado", ""),
-                "Pata_1_Idx": int(ip.get("Pata_1_Indice_Lado", 1)),
-                "Pata_2_Casa": c2_casa,
-                "Pata_2_Seleccion": ip.get("Pata_2_Seleccion", ""),
-                "Pata_2_Cuota": c2_cuota,
-                "Pata_2_ID": ip.get("Pata_2_ID_Mercado", ""),
-                "Pata_2_Idx": int(ip.get("Pata_2_Indice_Lado", 2)),
-                "ROI_Esperado_Pct": mejor_roi,
-            })
-
-    # 2. Prioridad 2: Surebets Cross-Exchange Taker-Taker (Motor B — todas las plataformas contra todas)
-    for sb in surebets_taker:
-        c1_casa = str(sb.get("Pata_1_Casa", ""))
-        c2_casa = str(sb.get("Pata_2_Casa", ""))
-        if c1_casa not in casas_ejecutables and c2_casa not in casas_ejecutables:
-            continue
-        roi_oc = float(sb.get("ROI_Neto_OnChain_0Bps_Pct", -99.0))
-        roi_26 = float(sb.get("ROI_Neto_Tabla_2026_Pct", -99.0))
-        if max(roi_oc, roi_26) >= 0.35:
-            candidatas.append({
-                "Tipo_Estrategia": "SUREBET_CROSS_EXCHANGE",
-                "Evento": sb.get("Evento", ""),
-                "Deporte": sb.get("Deporte", ""),
-                "Mercado": sb.get("Mercado", ""),
-                "Pata_1_Casa": c1_casa,
-                "Pata_1_Seleccion": sb.get("Pata_1_Seleccion", ""),
-                "Pata_1_Cuota": float(sb.get("Pata_1_Cuota_Bruta", 0.0)),
-                "Pata_1_ID": sb.get("Pata_1_ID_Mercado", ""),
-                "Pata_1_Idx": int(sb.get("Pata_1_Indice_Lado", 1)),
-                "Pata_2_Casa": c2_casa,
-                "Pata_2_Seleccion": sb.get("Pata_2_Seleccion", ""),
-                "Pata_2_Cuota": float(sb.get("Pata_2_Cuota_Bruta", 0.0)),
-                "Pata_2_ID": sb.get("Pata_2_ID_Mercado", ""),
-                "Pata_2_Idx": int(sb.get("Pata_2_Indice_Lado", 2)),
-                "ROI_Esperado_Pct": max(roi_oc, roi_26),
-            })
-
-    # 3. Prioridad 3: Arbitraje Maker-Taker (Motor C — todas las plataformas)
-    for mk in arbs_maker_taker:
-        c1_casa = str(mk.get("Pata_1_Casa", ""))
-        c2_casa = str(mk.get("Pata_2_Casa", ""))
-        if c1_casa not in casas_ejecutables and c2_casa not in casas_ejecutables:
-            continue
-        roi_mk = float(mk.get("ROI_Maker_Taker_Pct", -99.0))
-        if roi_mk >= 0.80:
-            candidatas.append({
-                "Tipo_Estrategia": "ARBITRAJE_MAKER_TAKER",
-                "Evento": mk.get("Evento", ""),
-                "Deporte": mk.get("Deporte", ""),
-                "Mercado": mk.get("Mercado", ""),
-                "Pata_1_Casa": c1_casa,
-                "Pata_1_Seleccion": mk.get("Pata_1_Seleccion", ""),
-                "Pata_1_Cuota": float(mk.get("Pata_1_Cuota_Bruta", 0.0)),
-                "Pata_1_ID": mk.get("Pata_1_ID_Mercado", ""),
-                "Pata_1_Idx": int(mk.get("Pata_1_Indice_Lado", 1)),
-                "Pata_2_Casa": c2_casa,
-                "Pata_2_Seleccion": mk.get("Pata_2_Seleccion", ""),
-                "Pata_2_Cuota": float(mk.get("Pata_2_Cuota_Bruta", 0.0)),
-                "Pata_2_ID": mk.get("Pata_2_ID_Mercado", ""),
-                "Pata_2_Idx": int(mk.get("Pata_2_Indice_Lado", 2)),
-                "ROI_Esperado_Pct": roi_mk,
-            })
-
-    # 4. Prioridad 4: Pasillos / Middles de Riesgo Cero (Motor D — todas las plataformas)
+    # 1. Prioridad 1: Pasillos de Riesgo Cero donde AMBAS patas están en Polymarket (Costo total <= $1.00, 0% riesgo)
     for pas in pasillos_middles:
         c1_casa = str(pas.get("Pata_1_Casa", ""))
         c2_casa = str(pas.get("Pata_2_Casa", ""))
-        if c1_casa not in casas_ejecutables and c2_casa not in casas_ejecutables:
-            continue
-        roi_norm = float(pas.get("ROI_Normal_1Pata_Pct", -99.0))
-        if roi_norm >= -0.25:
-            candidatas.append({
-                "Tipo_Estrategia": "PASILLO_RIESGO_CERO",
-                "Evento": pas.get("Evento", ""),
-                "Deporte": pas.get("Deporte", ""),
-                "Mercado": pas.get("Ventana_Ganar_Ambas", "Pasillo"),
-                "Pata_1_Casa": c1_casa,
-                "Pata_1_Seleccion": pas.get("Pata_1_Seleccion", ""),
-                "Pata_1_Cuota": float(pas.get("Pata_1_Cuota_Bruta", 0.0)),
-                "Pata_1_ID": pas.get("Pata_1_ID_Mercado", ""),
-                "Pata_1_Idx": int(pas.get("Pata_1_Indice_Lado", 1)),
-                "Pata_2_Casa": c2_casa,
-                "Pata_2_Seleccion": pas.get("Pata_2_Seleccion", ""),
-                "Pata_2_Cuota": float(pas.get("Pata_2_Cuota_Bruta", 0.0)),
-                "Pata_2_ID": pas.get("Pata_2_ID_Mercado", ""),
-                "Pata_2_Idx": int(pas.get("Pata_2_Indice_Lado", 2)),
-                "ROI_Esperado_Pct": roi_norm,
-            })
+        if c1_casa in casas_auto_2patas and c2_casa in casas_auto_2patas:
+            roi_norm = float(pas.get("ROI_Normal_1Pata_Pct", -99.0))
+            if roi_norm >= 0.0:
+                candidatas.append({
+                    "Tipo_Estrategia": "PASILLO_2PATAS_POLYMARKET_RIESGO_CERO",
+                    "Evento": pas.get("Evento", ""),
+                    "Deporte": pas.get("Deporte", ""),
+                    "Mercado": pas.get("Ventana_Ganar_Ambas", "Pasillo"),
+                    "Pata_1_Casa": c1_casa,
+                    "Pata_1_Seleccion": pas.get("Pata_1_Seleccion", ""),
+                    "Pata_1_Cuota": float(pas.get("Pata_1_Cuota_Bruta", 0.0)),
+                    "Pata_1_ID": pas.get("Pata_1_ID_Mercado", ""),
+                    "Pata_1_Idx": int(pas.get("Pata_1_Indice_Lado", 1)),
+                    "Pata_2_Casa": c2_casa,
+                    "Pata_2_Seleccion": pas.get("Pata_2_Seleccion", ""),
+                    "Pata_2_Cuota": float(pas.get("Pata_2_Cuota_Bruta", 0.0)),
+                    "Pata_2_ID": pas.get("Pata_2_ID_Mercado", ""),
+                    "Pata_2_Idx": int(pas.get("Pata_2_Indice_Lado", 2)),
+                    "ROI_Esperado_Pct": roi_norm,
+                })
 
     for cand in candidatas:
         if len(nuevas_ejecuciones) >= max_ejecuciones_ciclo:
@@ -209,19 +108,15 @@ def ejecutar_oportunidades_surebets(
         if clave in ya_ejecutadas:
             continue
 
-        # Identificar qué pata(s) son ejecutables On-Chain en Polymarket
-        patas_poly = []
-        if cand["Pata_1_Casa"] == "Polymarket":
-            tok1 = _extraer_token_id_polymarket(cand["Pata_1_ID"], cand["Pata_1_Idx"])
-            if tok1:
-                patas_poly.append((1, cand["Pata_1_Seleccion"], cand["Pata_1_Cuota"], tok1))
-        if cand["Pata_2_Casa"] == "Polymarket":
-            tok2 = _extraer_token_id_polymarket(cand["Pata_2_ID"], cand["Pata_2_Idx"])
-            if tok2:
-                patas_poly.append((2, cand["Pata_2_Seleccion"], cand["Pata_2_Cuota"], tok2))
-
-        if not patas_poly:
+        # Verificar que tengamos los 2 token_id de AMBAS patas para nunca quedar con 1 sola pata coja
+        tok1 = _extraer_token_id_polymarket(cand["Pata_1_ID"], cand["Pata_1_Idx"])
+        tok2 = _extraer_token_id_polymarket(cand["Pata_2_ID"], cand["Pata_2_Idx"])
+        if not tok1 or not tok2 or tok1 == tok2:
             continue
+        patas_poly = [
+            (1, cand["Pata_1_Seleccion"], cand["Pata_1_Cuota"], tok1),
+            (2, cand["Pata_2_Seleccion"], cand["Pata_2_Cuota"], tok2),
+        ]
 
         # Verificar en vivo el libro de órdenes de las patas de Polymarket (y SX Bet si aplica)
         verif_ok = True
