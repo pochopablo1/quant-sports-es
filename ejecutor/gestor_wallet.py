@@ -24,19 +24,22 @@ from configuracion import RUTA_BASE
 logger = logging.getLogger("GestorWalletWeb3")
 RUTA_ENV = RUTA_BASE / ".env"
 
-# RPCs públicos gratuitos (Polygon para Polymarket/Azuro y Base para Limitless)
+# RPCs públicos gratuitos (Polygon para Polymarket/Azuro, SX Rollup para SX Bet y Base para Limitless)
 RPC_POLYGON = "https://polygon-bor-rpc.publicnode.com"
+RPC_SX_ROLLUP = "https://rpc-rollup.sx.technology"
 RPC_BASE = "https://mainnet.base.org"
 
 # Contratos oficiales de USDC y pUSD (6 decimales)
 CONTRATO_PUSD_POLYGON = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"   # Colateral oficial Polymarket V2 (pUSD)
 CONTRATO_USDCE_POLYGON = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"  # USDC.e en Polygon (Wrappeable 1:1 a pUSD)
 CONTRATO_USDC_NATIVO_POLYGON = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+CONTRATO_USDC_SX_ROLLUP = "0x6629Ce1Cf35Cc1329ebB4F63202F3f197b3F050B" # Colateral oficial SX Bet (Chain 4162)
 CONTRATO_USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"      # Colateral oficial de Limitless Exchange
 
 # Contratos oficiales en Polygon para Swap 1:1 (Uniswap V3), Wrapper 1:1 pUSD y Polymarket CLOB
 UNISWAP_V3_ROUTER_POLYGON = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
 POLY_PUSD_WRAPPER = "0x93070a847efef7f70739046a929d47a521f5b8ee"
+POLY_PUSD_OFFRAMP = "0x2957922Eb93258b93368531d39fAcCA3B4dC5854"
 POLY_CTF_EXCHANGE = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
 POLY_NEG_RISK_EXCHANGE = "0xC5d563A36AE78145C45a50134d48A1215220f80a"
 POLY_NEG_RISK_ADAPTER = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296"
@@ -204,10 +207,17 @@ def verificar_estado_wallet() -> Dict[str, Any]:
     usdc_poly = _consultar_erc20_balance(RPC_POLYGON, CONTRATO_USDC_NATIVO_POLYGON, direccion)
     pol_gas = _consultar_balance_nativo(RPC_POLYGON, direccion)
 
+    usdc_sx = round(
+        _consultar_erc20_balance(RPC_SX_ROLLUP, CONTRATO_USDC_SX_ROLLUP, direccion)
+        + _consultar_erc20_balance(RPC_SX_ROLLUP, CONTRATO_USDC_SX_ROLLUP, "0x043a5fb0f9d75e36D972A054c649C3425A26E811")
+        + _consultar_erc20_balance(RPC_SX_ROLLUP, CONTRATO_USDC_SX_ROLLUP, "0xe34654a02c16163a68f46f83aB051Bb642C21458"),
+        2,
+    )
+
     usdc_base = _consultar_erc20_balance(RPC_BASE, CONTRATO_USDC_BASE, direccion)
     eth_base_gas = _consultar_balance_nativo(RPC_BASE, direccion)
 
-    total_usdc_operativo = round(pusd_poly + usdce_poly + usdc_poly + usdc_base, 2)
+    total_usdc_operativo = round(pusd_poly + usdce_poly + usdc_poly + usdc_sx + usdc_base, 2)
 
     return {
         "configurada": True,
@@ -218,6 +228,7 @@ def verificar_estado_wallet() -> Dict[str, Any]:
         "polygon_usdce_polymarket": usdce_poly,
         "polygon_usdc_nativo": usdc_poly,
         "polygon_pol_gas": pol_gas,
+        "sx_usdc_sxbet": usdc_sx,
         "base_usdc_limitless": usdc_base,
         "base_eth_gas": eth_base_gas,
         "total_usdc_disponible": total_usdc_operativo,
@@ -299,6 +310,13 @@ def firmar_orden_polymarket_clob(
                     respuesta = sc.post_order(orden_firmada)
                     estado_str = str(getattr(respuesta, "status", "")).upper()
                     order_id = str(getattr(respuesta, "order_id", ""))
+                    if "DELAYED" in estado_str:
+                        import time as _t
+                        _t.sleep(3.5)
+                        return (
+                            True,
+                            f"Orden IN-PLAY MATCHED/DELAYED en Polymarket V2 ({contratos} contratos @ ${precio_limpio:.2f} = ${costo_real_usd:.2f} USD | ID: {order_id})",
+                        )
                     if "MATCHED" not in estado_str:
                         try:
                             sc.cancel_order(order_id)
@@ -498,6 +516,132 @@ def preparar_wallet_polymarket_onchain() -> None:
     print("═" * 95 + "\n")
 
 
+def retirar_pusd_polymarket_a_usdc(monto_usd: float) -> None:
+    """
+    Retira `monto_usd` desde la Deposit Wallet V2 de Polymarket hacia la MetaMask EOA del usuario:
+    1. Transfiere `pUSD` sin gas desde la Deposit Wallet (`0x71DD...`) a la MetaMask EOA (`0x8fe1...`).
+    2. Hace unwrap 1:1 (0% comisión) de `pUSD` -> `USDC.e` usando `POLY_PUSD_OFFRAMP` (`0x295792...`).
+    3. Convierte `USDC.e` -> `USDC Nativo` en Polygon vía Uniswap V3 (0.01% pool) para uso directo en SX Bet / MetaMask.
+    """
+    import time
+    from eth_abi import encode
+    from polymarket import SecureClient
+
+    load_dotenv(RUTA_ENV, override=True)
+    priv_key = os.getenv("BOT_WALLET_PRIVATE_KEY", "").strip()
+    direccion = os.getenv("BOT_WALLET_ADDRESS", "").strip()
+    if not priv_key or not direccion:
+        print("❌ Faltan credenciales de billetera en .env")
+        return
+
+    unidades_objetivo = int(round(float(monto_usd) * 1_000_000))
+    if unidades_objetivo <= 0:
+        print("❌ El monto a retirar debe ser mayor a $0.00 USD.")
+        return
+
+    deposit_wallet = _obtener_deposit_wallet_polymarket(direccion)
+    print("\n" + "═" * 95)
+    print(f"💸 RETIRO AUTOMÁTICO POLYMARKET V2 -> METAMASK USDC (${monto_usd:.2f} USD)")
+    print("═" * 95)
+
+    addr_pad = direccion.lower().replace("0x", "").zfill(64)
+    dw_pad = deposit_wallet.lower().replace("0x", "").zfill(64)
+
+    res_pusd_eoa = _rpc_call_polygon("eth_call", [{"to": CONTRATO_PUSD_POLYGON, "data": "0x70a08231" + addr_pad}, "latest"])
+    unidades_pusd_eoa = int(res_pusd_eoa or "0x0", 16)
+
+    res_pusd_dw = _rpc_call_polygon("eth_call", [{"to": CONTRATO_PUSD_POLYGON, "data": "0x70a08231" + dw_pad}, "latest"])
+    unidades_pusd_dw = int(res_pusd_dw or "0x0", 16)
+
+    print(f"   • Saldo pUSD actual en Deposit Wallet ({deposit_wallet}): ${unidades_pusd_dw / 1e6:.2f} USD")
+    print(f"   • Saldo pUSD actual en MetaMask EOA   ({direccion}): ${unidades_pusd_eoa / 1e6:.2f} USD")
+
+    # Paso 1: Si falta pUSD en la EOA, transferirlo sin gas desde la Deposit Wallet V2
+    if unidades_pusd_eoa < unidades_objetivo:
+        faltante = unidades_objetivo - unidades_pusd_eoa
+        if unidades_pusd_dw < faltante:
+            raise RuntimeError(
+                f"Saldo libre insuficiente en Deposit Wallet (${unidades_pusd_dw / 1e6:.2f} USD disponibles vs ${faltante / 1e6:.2f} USD requeridos)."
+            )
+        print(f"\n🔄 Paso 1: Retirando ${faltante / 1e6:.2f} pUSD sin gas desde Deposit Wallet -> MetaMask EOA...")
+        sc_tmp = SecureClient._create(private_key=priv_key, wallet=None)
+        try:
+            bk = sc_tmp.create_builder_api_key()
+        finally:
+            sc_tmp.close()
+
+        sc = SecureClient.create(private_key=priv_key, api_key=bk)
+        try:
+            sc._ctx.rpc._transport._base_url = RPC_POLYGON
+            sc._ctx.rpc._transport._client.base_url = RPC_POLYGON
+            handle = sc.transfer_erc20(
+                token_address=CONTRATO_PUSD_POLYGON,
+                recipient_address=direccion,
+                amount=faltante,
+            )
+            recibo_relayer = handle.wait()
+            print(f"   ✅ Transferencia gasless confirmada en Polygon! ({recibo_relayer})")
+        finally:
+            sc.close()
+
+        time.sleep(3.0)
+        res_pusd_eoa = _rpc_call_polygon("eth_call", [{"to": CONTRATO_PUSD_POLYGON, "data": "0x70a08231" + addr_pad}, "latest"])
+        unidades_pusd_eoa = int(res_pusd_eoa or "0x0", 16)
+
+    # Paso 2: Unwrap 1:1 de pUSD -> USDC.e vía POLY_PUSD_OFFRAMP (0x2957922Eb93258b93368531d39fAcCA3B4dC5854)
+    unidades_a_desenvolver = min(unidades_pusd_eoa, unidades_objetivo)
+    if unidades_a_desenvolver >= 100_000:
+        print(f"\n🔄 Paso 2: Desenvolviendo ${unidades_a_desenvolver / 1e6:.2f} pUSD -> USDC.e 1:1 (0% comisión)...")
+        data_allow_off = "0xdd62ed3e" + encode(["address", "address"], [direccion, POLY_PUSD_OFFRAMP]).hex()
+        allow_off = int(_rpc_call_polygon("eth_call", [{"to": CONTRATO_PUSD_POLYGON, "data": data_allow_off}, "latest"]) or "0x0", 16)
+        if allow_off < unidades_a_desenvolver:
+            max_uint256 = (2**256) - 1
+            data_app_off = "0x095ea7b3" + encode(["address", "uint256"], [POLY_PUSD_OFFRAMP, max_uint256]).hex()
+            _enviar_tx_polygon_y_esperar(priv_key, CONTRATO_PUSD_POLYGON, data_app_off, gas_limit=100000)
+
+        # unwrap(address token, address to, uint256 amount) -> selector 0x8cc7104f
+        data_unwrap = "0x8cc7104f" + encode(
+            ["address", "address", "uint256"],
+            [CONTRATO_USDCE_POLYGON, direccion, unidades_a_desenvolver],
+        ).hex()
+        _enviar_tx_polygon_y_esperar(priv_key, POLY_PUSD_OFFRAMP, data_unwrap, gas_limit=180000)
+        print(f"   ✅ ¡${unidades_a_desenvolver / 1e6:.2f} USDC.e recibidos 1:1 en tu MetaMask!")
+
+    # Paso 3: Convertir USDC.e -> USDC Nativo de Polygon vía Uniswap V3 (pool 0.01%)
+    time.sleep(2.0)
+    res_usdce = _rpc_call_polygon("eth_call", [{"to": CONTRATO_USDCE_POLYGON, "data": "0x70a08231" + addr_pad}, "latest"])
+    unidades_usdce = int(res_usdce or "0x0", 16)
+    if unidades_usdce >= 100_000:
+        print(f"\n🔄 Paso 3: Convirtiendo ${unidades_usdce / 1e6:.2f} USDC.e -> USDC Nativo en tu MetaMask (Uniswap V3 0.01%)...")
+        data_allow_uni = "0xdd62ed3e" + encode(["address", "address"], [direccion, UNISWAP_V3_ROUTER_POLYGON]).hex()
+        allow_uni = int(_rpc_call_polygon("eth_call", [{"to": CONTRATO_USDCE_POLYGON, "data": data_allow_uni}, "latest"]) or "0x0", 16)
+        if allow_uni < unidades_usdce:
+            max_uint256 = (2**256) - 1
+            data_app_uni = "0x095ea7b3" + encode(["address", "uint256"], [UNISWAP_V3_ROUTER_POLYGON, max_uint256]).hex()
+            _enviar_tx_polygon_y_esperar(priv_key, CONTRATO_USDCE_POLYGON, data_app_uni, gas_limit=100000)
+
+        min_out = int(unidades_usdce * 0.998)
+        deadline = int(time.time()) + 600
+        params_tuple = (
+            CONTRATO_USDCE_POLYGON,
+            CONTRATO_USDC_NATIVO_POLYGON,
+            100,
+            direccion,
+            deadline,
+            unidades_usdce,
+            min_out,
+            0,
+        )
+        data_swap = "0x414bf389" + encode(
+            ["(address,address,uint24,address,uint256,uint256,uint256,uint160)"],
+            [params_tuple],
+        ).hex()
+        _enviar_tx_polygon_y_esperar(priv_key, UNISWAP_V3_ROUTER_POLYGON, data_swap, gas_limit=280000)
+        print(f"   🎉 ¡${unidades_usdce / 1e6:.2f} USDC Nativo acreditados en tu MetaMask ({direccion}) listos para SX Bet!")
+
+    print("═" * 95 + "\n")
+
+
 def imprimir_panel_wallet(estado: Dict[str, Any]) -> None:
     print("\n" + "═" * 95)
     print("🔐 GESTOR DE BILLETERA WEB3 EXCLUSIVA DEL BOT (EVM: Polygon & Base L2)")
@@ -517,6 +661,7 @@ def imprimir_panel_wallet(estado: Dict[str, Any]) -> None:
     print(f"   • Polygon USDC.e (Puente)     : ${estado['polygon_usdce_polymarket']:.2f} USD")
     print(f"   • Polygon USDC Nativo (Azuro) : ${estado['polygon_usdc_nativo']:.2f} USD")
     print(f"   • Polygon Gas (POL / MATIC)   : {estado['polygon_pol_gas']:.5f} POL")
+    print(f"   • SX Rollup USDC (SX Bet)     : ${estado.get('sx_usdc_sxbet', 0.0):.2f} USD")
     print(f"   • Base L2 USDC (Limitless)    : ${estado['base_usdc_limitless']:.2f} USD")
     print(f"   • Base L2 Gas (ETH)           : {estado['base_eth_gas']:.5f} ETH")
     print("─" * 95)
@@ -539,6 +684,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Convierte USDC Nativo a USDC.e 1:1 en Uniswap V3 y habilita contratos de Polymarket",
     )
+    parser.add_argument(
+        "--retirar-polymarket",
+        type=float,
+        default=0.0,
+        help="Retira el monto indicado en USD desde Polymarket V2 (pUSD) hacia USDC Nativo en MetaMask",
+    )
     args = parser.parse_args()
 
     if args.crear_wallet:
@@ -550,6 +701,9 @@ if __name__ == "__main__":
 
     if args.preparar_polymarket:
         preparar_wallet_polymarket_onchain()
+
+    if args.retirar_polymarket and args.retirar_polymarket > 0:
+        retirar_pusd_polymarket_a_usdc(args.retirar_polymarket)
 
     estado_actual = verificar_estado_wallet()
     imprimir_panel_wallet(estado_actual)

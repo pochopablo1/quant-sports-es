@@ -79,6 +79,8 @@ def obtener_radiografia_real_polymarket() -> dict:
     priv_key = os.getenv("BOT_WALLET_PRIVATE_KEY", "").strip()
 
     pusd_cash = float(estado_w.get("polygon_pusd_polymarket", 0.0))
+    sx_cash = float(estado_w.get("sx_usdc_sxbet", 0.0))
+    poly_usdc = float(estado_w.get("polygon_usdc_nativo", 0.0))
     pol_gas = float(estado_w.get("polygon_pol_gas", 0.0))
     dep_wallet = str(estado_w.get("deposit_wallet_polymarket", ""))
 
@@ -97,34 +99,38 @@ def obtener_radiografia_real_polymarket() -> dict:
             except Exception:
                 pass
 
-            # 1. Posiciones actuales (OPEN y REDEEMABLE)
-            try:
-                pos_items = sc.list_positions().first_page().items
-                for p in pos_items:
-                    estado_p = str(p.status.value if hasattr(p.status, "value") else p.status)
-                    costo = round(float(p.total_cost_usdc), 2)
-                    val_act = round(float(p.current_value), 2)
-                    pnl = round(float(p.total_pnl), 2)
-                    p_ent = round(float(p.avg_price), 3)
-                    p_act = round(float(p.current_price), 3)
-                    clv_vivo = round(((p_act / p_ent) - 1.0) * 100.0, 2) if p_ent > 0.01 else 0.0
-                    item_dict = {
-                        "titulo": str(p.title),
-                        "seleccion": str(p.outcome),
-                        "contratos": round(float(p.current_size), 2),
-                        "precio_entrada": p_ent,
-                        "precio_actual": p_act,
-                        "clv_pct": clv_vivo,
-                        "costo_usd": costo,
-                        "valor_actual_usd": val_act,
-                        "pnl_usd": pnl,
-                    }
-                    if estado_p == "OPEN":
-                        abiertas.append(item_dict)
-                    elif val_act <= 0.01 and pnl < 0:
-                        perdidas.append(item_dict)
-            except Exception:
-                pass
+            # 1. Posiciones actuales (OPEN y REDEEMABLE) con reintento ante micro-cortes
+            pos_ok = False
+            for _intento_pos in range(2):
+                try:
+                    pos_items = sc.list_positions().first_page().items
+                    pos_ok = True
+                    for p in pos_items:
+                        estado_p = str(p.status.value if hasattr(p.status, "value") else p.status)
+                        costo = round(float(p.total_cost_usdc), 2)
+                        val_act = round(float(p.current_value), 2)
+                        pnl = round(float(p.total_pnl), 2)
+                        p_ent = round(float(p.avg_price), 3)
+                        p_act = round(float(p.current_price), 3)
+                        clv_vivo = round(((p_act / p_ent) - 1.0) * 100.0, 2) if p_ent > 0.01 else 0.0
+                        item_dict = {
+                            "titulo": str(p.title),
+                            "seleccion": str(p.outcome),
+                            "contratos": round(float(p.current_size), 2),
+                            "precio_entrada": p_ent,
+                            "precio_actual": p_act,
+                            "clv_pct": clv_vivo,
+                            "costo_usd": costo,
+                            "valor_actual_usd": val_act,
+                            "pnl_usd": pnl,
+                        }
+                        if estado_p == "OPEN":
+                            abiertas.append(item_dict)
+                        elif val_act <= 0.01 and pnl < 0:
+                            perdidas.append(item_dict)
+                    break
+                except Exception:
+                    pass
 
             # 2. Actividades de cobro (REDEEM = Apuestas Ganadas pagadas a tu pUSD) y reconstrucción de históricas
             try:
@@ -161,15 +167,16 @@ def obtener_radiografia_real_polymarket() -> dict:
                             "fecha": a.timestamp.strftime("%d/%m %H:%M"),
                         })
                 # Si Polymarket archivó posiciones viejas en list_positions(), reconstruir cerradas no redimidas desde TRADE
-                titulos_abiertos = {x["titulo"] for x in abiertas}
-                titulos_perdidos = {x["titulo"] for x in perdidas}
-                for cond_id, tr in trades_por_cond.items():
-                    if cond_id not in conds_redimidas and tr["titulo"] not in titulos_abiertos and tr["titulo"] not in titulos_perdidos:
-                        perdidas.append({
-                            "titulo": tr["titulo"],
-                            "seleccion": tr["seleccion"],
-                            "costo_usd": tr["costo_usd"],
-                        })
+                if pos_ok and (abiertas or valor_posiciones_usd < 1.0):
+                    titulos_abiertos = {x["titulo"] for x in abiertas}
+                    titulos_perdidos = {x["titulo"] for x in perdidas}
+                    for cond_id, tr in trades_por_cond.items():
+                        if cond_id not in conds_redimidas and tr["titulo"] not in titulos_abiertos and tr["titulo"] not in titulos_perdidos:
+                            perdidas.append({
+                                "titulo": tr["titulo"],
+                                "seleccion": tr["seleccion"],
+                                "costo_usd": tr["costo_usd"],
+                            })
             except Exception:
                 pass
             sc.close()
@@ -180,12 +187,13 @@ def obtener_radiografia_real_polymarket() -> dict:
         valor_posiciones_usd = round(sum(x["valor_actual_usd"] for x in abiertas), 2)
 
     clv_promedio_pct = _registrar_snapshot_clv(abiertas)
-    patrimonio_total_usd = round(pusd_cash + valor_posiciones_usd, 2)
+    patrimonio_total_usd = round(pusd_cash + sx_cash + poly_usdc + valor_posiciones_usd, 2)
     pnl_global_usd = round(patrimonio_total_usd - CAPITAL_INICIAL_REFERENCIA_USD, 2)
 
     return {
         "deposit_wallet": dep_wallet,
         "pusd_cash": round(pusd_cash, 2),
+        "sx_cash": round(sx_cash + poly_usdc, 2),
         "valor_en_juego": round(valor_posiciones_usd, 2),
         "patrimonio_total": patrimonio_total_usd,
         "pnl_global_usd": pnl_global_usd,
@@ -198,7 +206,7 @@ def obtener_radiografia_real_polymarket() -> dict:
 
 
 def generar_texto_resumen_telegram_hoy() -> str:
-    """Construye el reporte 100% REAL ON-CHAIN de Polymarket V2 para Telegram."""
+    """Construye el reporte 100% REAL ON-CHAIN de Polymarket V2 + SX Bet para Telegram."""
     ahora_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     rad = obtener_radiografia_real_polymarket()
 
@@ -209,9 +217,10 @@ def generar_texto_resumen_telegram_hoy() -> str:
     wr_pct = round((cant_gan / resueltas) * 100.0, 1) if resueltas > 0 else 0.0
 
     lineas = [
-        f"🤖 *REPORTE REAL ON-CHAIN — POLYMARKET V2 ({ahora_str})*",
+        f"🤖 *REPORTE REAL ON-CHAIN — POLYMARKET + SX BET ({ahora_str})*",
         f"💼 *Patrimonio Total Actual:* `${rad['patrimonio_total']:.2f} USD` (Inicial: `$89.24` | PnL: `{rad['pnl_global_usd']:+.2f} USD`)",
-        f"• *Efectivo Líquido (`pUSD`):* `${rad['pusd_cash']:.2f} USD`",
+        f"• *Efectivo Polymarket (`pUSD`):* `${rad['pusd_cash']:.2f} USD`",
+        f"• *Efectivo SX Bet + Polygon (`USDC`):* `${rad.get('sx_cash', 0.0):.2f} USD`",
         f"• *Capital en Juego ({cant_abi} abiertas):* `${rad['valor_en_juego']:.2f} USD`",
         f"• *CLV Promedio (Closing Line Value):* `{rad['clv_promedio_pct']:+.2f}%`",
         f"• *Gas en Billetera:* `{rad['pol_gas']:.2f} POL`",
