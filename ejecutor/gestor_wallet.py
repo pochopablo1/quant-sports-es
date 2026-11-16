@@ -346,6 +346,109 @@ def firmar_orden_polymarket_clob(
         return False, f"Error firmando/enviando orden a Polymarket CLOB V2: {exc}"
 
 
+def firmar_orden_sx_bet_v3(
+    market_hash: str,
+    indice_lado: int,
+    cuota_decimal: float,
+    tamano_usd: float,
+    tipo_orden: str = "IOC",
+) -> Tuple[bool, str]:
+    """
+    Firma con EIP-712 (`OBv3 Escrow` Chain 4162) y envía una orden Taker (`IOC`/`FOK`) o Maker (`GTC`)
+    a `POST https://api.sx.bet/orders-v3` usando `SX_BET_API_KEY`.
+    """
+    import time
+    from eth_account import Account
+    from eth_utils.address import to_checksum_address
+
+    load_dotenv(RUTA_ENV, override=True)
+    ejecucion_real = os.getenv("EJECUCION_REAL_HABILITADA", "false").lower() == "true"
+    sx_key = (os.getenv("SX_API_KEY") or os.getenv("SX_BET_API_KEY") or "").strip()
+    priv_key = (os.getenv("SX_SIGNER_PRIVATE_KEY") or os.getenv("BOT_WALLET_PRIVATE_KEY") or "").strip()
+
+    if not ejecucion_real:
+        return False, "Candado activo (`EJECUCION_REAL_HABILITADA=false`). Orden SX Bet en Paper Trading."
+    if not sx_key or not priv_key:
+        return False, "Falta `SX_BET_API_KEY` o clave privada en .env."
+
+    try:
+        cuenta = Account.from_key(priv_key)
+        maker_addr = to_checksum_address(cuenta.address)
+
+        # Escala de probabilidades OBv3 (1e20, múltiplo de step size 125 * 1e15 = 1.25e17)
+        prob_bruta = 1.0 / float(cuota_decimal)
+        paso = 125 * (10**15)
+        prob_escala = int(round((prob_bruta * (10**20)) / paso) * paso)
+        unidades_usdc = int(round(float(tamano_usd) * 1_000_000))
+        salt_int = int.from_bytes(secrets.token_bytes(16), "big")
+        expiry_int = int(time.time()) + 300
+        es_lado_uno = int(indice_lado) == 1
+
+        base_token = to_checksum_address(CONTRATO_USDC_SX_ROLLUP)
+        escrow_addr = to_checksum_address("0x890482680C3a0116aBB003B17e7D694D13a6c1eB")
+        m_hash_bytes = bytes.fromhex(str(market_hash).removeprefix("0x").zfill(64))
+
+        domain = {
+            "name": "OBv3 Escrow",
+            "version": "1",
+            "chainId": 4162,
+            "verifyingContract": escrow_addr,
+        }
+        types = {
+            "Order": [
+                {"name": "marketHash", "type": "bytes32"},
+                {"name": "baseToken", "type": "address"},
+                {"name": "totalBetSize", "type": "uint256"},
+                {"name": "percentageOdds", "type": "uint256"},
+                {"name": "salt", "type": "uint256"},
+                {"name": "expiry", "type": "uint256"},
+                {"name": "maker", "type": "address"},
+                {"name": "isMakerBettingOutcomeOne", "type": "bool"},
+            ]
+        }
+        message = {
+            "marketHash": m_hash_bytes,
+            "baseToken": base_token,
+            "totalBetSize": unidades_usdc,
+            "percentageOdds": prob_escala,
+            "salt": salt_int,
+            "expiry": expiry_int,
+            "maker": maker_addr,
+            "isMakerBettingOutcomeOne": es_lado_uno,
+        }
+
+        firmada = Account.sign_typed_data(priv_key, domain, types, message)
+        sig_hex = "0x" + firmada.signature.hex().removeprefix("0x")
+
+        orden_item = {
+            "marketHash": "0x" + m_hash_bytes.hex(),
+            "maker": maker_addr,
+            "totalBetSize": str(unidades_usdc),
+            "percentageOdds": str(prob_escala),
+            "salt": str(salt_int),
+            "expiry": expiry_int,
+            "baseToken": base_token,
+            "isMakerBettingOutcomeOne": es_lado_uno,
+            "timeInForce": str(tipo_orden).upper(),
+            "orderSignature": sig_hex,
+        }
+        resp = requests.post(
+            "https://api.sx.bet/orders-v3",
+            headers={
+                "x-sx-api-key": sx_key,
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0",
+            },
+            json={"orders": [orden_item], "waitForOutcome": True, "maxWaitTime": 12000},
+            timeout=15,
+        )
+        if resp.status_code in (200, 201):
+            return True, f"Orden SX Bet V3 aceptada (${tamano_usd:.2f} USD @ {cuota_decimal:.3f}): {resp.text[:160]}"
+        return False, f"SX Bet V3 HTTP {resp.status_code}: {resp.text[:200]}"
+    except Exception as exc:
+        return False, f"Error firmando/enviando orden a SX Bet V3: {exc}"
+
+
 def _rpc_call_polygon(method: str, params: list) -> Any:
     resp = requests.post(
         RPC_POLYGON,

@@ -28,7 +28,10 @@ from ejecutor.verificador_atomico import (
     verificar_pata_polymarket_vwap,
     verificar_pata_sx_bet_vivo,
 )
-from ejecutor.gestor_wallet import firmar_orden_polymarket_clob
+from ejecutor.gestor_wallet import (
+    firmar_orden_polymarket_clob,
+    firmar_orden_sx_bet_v3,
+)
 
 logger = logging.getLogger("EjecutorSurebets")
 RUTA_HISTORIAL_SUREBETS = DIRECTORIO_DATOS / "historial_surebets_ejecutadas.csv"
@@ -70,20 +73,73 @@ def ejecutar_oportunidades_surebets(
     nuevas_ejecuciones: List[Dict[str, Any]] = []
 
     candidatas: List[Dict[str, Any]] = []
-    # REGLA ESTRICTA DE SUREBET PURA:
-    # JAMÁS ejecutar 1 sola pata al descubierto contra Kalshi/Vegas.
-    # Para que el bot dispare dinero real automáticamente, AMBAS PATAS deben cubrirse.
-    casas_auto_2patas = {"Polymarket"}
+    # REGLA ESTRICTA DE SUREBET PURA DE 2 PATAS:
+    # AMBAS PATAS (Pata 1 y Pata 2) deben pertenecer a las casas donde tenemos billetera y API activa:
+    #   - Polymarket + SX Bet (Surebet Cross-Exchange de 2 casas)
+    #   - Polymarket + Polymarket / SX Bet + SX Bet (Pasillo de Riesgo Cero / Arbitraje Interno)
+    casas_con_billetera = {"Polymarket", "SX Bet"}
 
-    # 1. Prioridad 1: Pasillos de Riesgo Cero donde AMBAS patas están en Polymarket (Costo total <= $1.00, 0% riesgo)
+    # 1. Prioridad 1: Surebets EN VIVO de 2 Patas (Polymarket <-> SX Bet)
+    for ip in cruces_inplay:
+        c1_casa = str(ip.get("Pata_1_Casa", ""))
+        c2_casa = str(ip.get("Pata_2_Casa", ""))
+        if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
+            roi_oc = float(ip.get("ROI_OnChain_0Bps_Pct", -99.0))
+            roi_26 = float(ip.get("ROI_Neto_2026_Pct", -99.0))
+            if max(roi_oc, roi_26) >= 0.40:
+                candidatas.append({
+                    "Tipo_Estrategia": "SUREBET_2CASAS_INPLAY",
+                    "Evento": ip.get("Evento", ""),
+                    "Deporte": ip.get("Deporte", ""),
+                    "Mercado": ip.get("Mercado", ""),
+                    "Pata_1_Casa": c1_casa,
+                    "Pata_1_Seleccion": ip.get("Pata_1_Seleccion", ""),
+                    "Pata_1_Cuota": float(ip.get("Pata_1_Cuota_Bruta", 0.0)),
+                    "Pata_1_ID": ip.get("Pata_1_ID_Mercado", ""),
+                    "Pata_1_Idx": int(ip.get("Pata_1_Indice_Lado", 1)),
+                    "Pata_2_Casa": c2_casa,
+                    "Pata_2_Seleccion": ip.get("Pata_2_Seleccion", ""),
+                    "Pata_2_Cuota": float(ip.get("Pata_2_Cuota_Bruta", 0.0)),
+                    "Pata_2_ID": ip.get("Pata_2_ID_Mercado", ""),
+                    "Pata_2_Idx": int(ip.get("Pata_2_Indice_Lado", 2)),
+                    "ROI_Esperado_Pct": max(roi_oc, roi_26),
+                })
+
+    # 2. Prioridad 2: Surebets Cross-Exchange Pre-Partido de 2 Patas (Polymarket <-> SX Bet)
+    for sb in surebets_taker:
+        c1_casa = str(sb.get("Pata_1_Casa", ""))
+        c2_casa = str(sb.get("Pata_2_Casa", ""))
+        if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
+            roi_oc = float(sb.get("ROI_Neto_OnChain_0Bps_Pct", -99.0))
+            roi_26 = float(sb.get("ROI_Neto_Tabla_2026_Pct", -99.0))
+            if max(roi_oc, roi_26) >= 0.35:
+                candidatas.append({
+                    "Tipo_Estrategia": "SUREBET_2CASAS_POLY_SXBET",
+                    "Evento": sb.get("Evento", ""),
+                    "Deporte": sb.get("Deporte", ""),
+                    "Mercado": sb.get("Mercado", ""),
+                    "Pata_1_Casa": c1_casa,
+                    "Pata_1_Seleccion": sb.get("Pata_1_Seleccion", ""),
+                    "Pata_1_Cuota": float(sb.get("Pata_1_Cuota_Bruta", 0.0)),
+                    "Pata_1_ID": sb.get("Pata_1_ID_Mercado", ""),
+                    "Pata_1_Idx": int(sb.get("Pata_1_Indice_Lado", 1)),
+                    "Pata_2_Casa": c2_casa,
+                    "Pata_2_Seleccion": sb.get("Pata_2_Seleccion", ""),
+                    "Pata_2_Cuota": float(sb.get("Pata_2_Cuota_Bruta", 0.0)),
+                    "Pata_2_ID": sb.get("Pata_2_ID_Mercado", ""),
+                    "Pata_2_Idx": int(sb.get("Pata_2_Indice_Lado", 2)),
+                    "ROI_Esperado_Pct": max(roi_oc, roi_26),
+                })
+
+    # 3. Prioridad 3: Pasillos de Riesgo Cero donde AMBAS patas están en Polymarket y/o SX Bet (Costo <= $1.00, 0% riesgo)
     for pas in pasillos_middles:
         c1_casa = str(pas.get("Pata_1_Casa", ""))
         c2_casa = str(pas.get("Pata_2_Casa", ""))
-        if c1_casa in casas_auto_2patas and c2_casa in casas_auto_2patas:
+        if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
             roi_norm = float(pas.get("ROI_Normal_1Pata_Pct", -99.0))
             if roi_norm >= 0.0:
                 candidatas.append({
-                    "Tipo_Estrategia": "PASILLO_2PATAS_POLYMARKET_RIESGO_CERO",
+                    "Tipo_Estrategia": "PASILLO_2PATAS_RIESGO_CERO",
                     "Evento": pas.get("Evento", ""),
                     "Deporte": pas.get("Deporte", ""),
                     "Mercado": pas.get("Ventana_Ganar_Ambas", "Pasillo"),
@@ -108,74 +164,75 @@ def ejecutar_oportunidades_surebets(
         if clave in ya_ejecutadas:
             continue
 
-        # Verificar que tengamos los 2 token_id de AMBAS patas para nunca quedar con 1 sola pata coja
-        tok1 = _extraer_token_id_polymarket(cand["Pata_1_ID"], cand["Pata_1_Idx"])
-        tok2 = _extraer_token_id_polymarket(cand["Pata_2_ID"], cand["Pata_2_Idx"])
-        if not tok1 or not tok2 or tok1 == tok2:
-            continue
-        patas_poly = [
-            (1, cand["Pata_1_Seleccion"], cand["Pata_1_Cuota"], tok1),
-            (2, cand["Pata_2_Seleccion"], cand["Pata_2_Cuota"], tok2),
+        # Verificar y ejecutar AMBAS patas (Polymarket y/o SX Bet)
+        patas_a_ejecutar = [
+            (1, cand["Pata_1_Casa"], cand["Pata_1_Seleccion"], cand["Pata_1_Cuota"], cand["Pata_1_ID"], cand["Pata_1_Idx"]),
+            (2, cand["Pata_2_Casa"], cand["Pata_2_Seleccion"], cand["Pata_2_Cuota"], cand["Pata_2_ID"], cand["Pata_2_Idx"]),
         ]
-
-        # Verificar en vivo el libro de órdenes de las patas de Polymarket (y SX Bet si aplica)
         verif_ok = True
         detalles_verif = []
-        precios_poly_vivos = []
+        ordenes_preparadas = []
 
-        for num_pata, sel_pata, cuota_esp, tok_id in patas_poly:
-            ok_p, cuota_vwap, liq_top, _, det_p = verificar_pata_polymarket_vwap(tok_id, stake_por_pata_usd)
-            if not ok_p or cuota_vwap <= 1.02:
-                verif_ok = False
-                break
-            # Evitar entrar en micro-centavos ilíquidos (< $0.08 o > $0.93)
-            precio_vivo = round(1.0 / cuota_vwap, 2)
-            if not (0.08 <= precio_vivo <= 0.93):
-                verif_ok = False
-                break
-            # Verificar que la cuota viva no haya caído más de 2 centavos respecto al escáner
-            if (1.0 / cuota_vwap) > (1.0 / cuota_esp) + 0.02:
-                verif_ok = False
-                break
-            precios_poly_vivos.append((num_pata, sel_pata, tok_id, precio_vivo, cuota_vwap, det_p))
-            detalles_verif.append(f"Poly({sel_pata}): {det_p}")
-
-        if not verif_ok or not precios_poly_vivos:
-            continue
-
-        # Si la otra pata es SX Bet, verificar en vivo su liquidez con la API Key V3
-        for num_sx, casa_sx, id_sx, idx_sx in [
-            (1, cand["Pata_1_Casa"], cand["Pata_1_ID"], cand["Pata_1_Idx"]),
-            (2, cand["Pata_2_Casa"], cand["Pata_2_ID"], cand["Pata_2_Idx"]),
-        ]:
-            if casa_sx == "SX Bet" and id_sx:
-                ok_sx, cuota_sx_viva, liq_sx, det_sx = verificar_pata_sx_bet_vivo(id_sx, idx_sx, stake_por_pata_usd)
-                if not ok_sx:
+        for num_p, casa_p, sel_p, cuota_esp, id_mkt, idx_lado in patas_a_ejecutar:
+            if casa_p == "Polymarket":
+                tok_id = _extraer_token_id_polymarket(id_mkt, idx_lado)
+                if not tok_id:
                     verif_ok = False
                     break
-                detalles_verif.append(f"SXBet: {det_sx}")
+                ok_p, cuota_vwap, liq_top, _, det_p = verificar_pata_polymarket_vwap(tok_id, stake_por_pata_usd)
+                if not ok_p or cuota_vwap <= 1.02:
+                    verif_ok = False
+                    break
+                precio_vivo = round(1.0 / cuota_vwap, 2)
+                if not (0.08 <= precio_vivo <= 0.93) or (1.0 / cuota_vwap) > (1.0 / cuota_esp) + 0.02:
+                    verif_ok = False
+                    break
+                ordenes_preparadas.append(("Polymarket", sel_p, tok_id, precio_vivo, cuota_vwap, idx_lado))
+                detalles_verif.append(f"Poly({sel_p}): {det_p}")
+            elif casa_p == "SX Bet":
+                if not id_mkt:
+                    verif_ok = False
+                    break
+                ok_sx, cuota_sx_viva, liq_sx, det_sx = verificar_pata_sx_bet_vivo(id_mkt, idx_lado, stake_por_pata_usd)
+                if not ok_sx or (1.0 / cuota_sx_viva) > (1.0 / cuota_esp) + 0.02:
+                    verif_ok = False
+                    break
+                ordenes_preparadas.append(("SX Bet", sel_p, id_mkt, round(1.0 / cuota_sx_viva, 4), cuota_sx_viva, idx_lado))
+                detalles_verif.append(f"SXBet({sel_p}): {det_sx}")
+            else:
+                verif_ok = False
+                break
 
-        if not verif_ok:
+        if not verif_ok or len(ordenes_preparadas) != 2:
             continue
 
-        # Ejecutar las patas de Polymarket con orden FOK On-Chain
+        # Disparar AMBAS patas (Pata 1 + Pata 2)
         estados_orden = []
         todo_ejecutado = True
-        for num_pata, sel_pata, tok_id, precio_vivo, cuota_vwap, det_p in precios_poly_vivos:
-            exito_fok, msg_fok = firmar_orden_polymarket_clob(
-                token_id=tok_id,
-                precio=precio_vivo,
-                tamano_usd=stake_por_pata_usd,
-                lado="BUY",
-                tipo_orden="FOK",
-            )
-            if exito_fok:
-                estados_orden.append(f"ORDEN_REAL_ENVIADA ({sel_pata}: {msg_fok})")
-            elif "Paper Trading" in msg_fok:
-                estados_orden.append(f"PAPER_EJECUTADA ({sel_pata} @ ${precio_vivo:.2f})")
+        for casa_p, sel_p, id_ref, precio_vivo, cuota_viva, idx_lado in ordenes_preparadas:
+            if casa_p == "Polymarket":
+                exito, msg = firmar_orden_polymarket_clob(
+                    token_id=id_ref,
+                    precio=precio_vivo,
+                    tamano_usd=stake_por_pata_usd,
+                    lado="BUY",
+                    tipo_orden="FOK",
+                )
+            else:
+                exito, msg = firmar_orden_sx_bet_v3(
+                    market_hash=id_ref,
+                    indice_lado=idx_lado,
+                    cuota_decimal=cuota_viva,
+                    tamano_usd=stake_por_pata_usd,
+                    tipo_orden="IOC",
+                )
+            if exito:
+                estados_orden.append(f"ORDEN_REAL ({casa_p} {sel_p}: {msg})")
+            elif "Paper Trading" in msg:
+                estados_orden.append(f"PAPER ({casa_p} {sel_p} @ {cuota_viva:.2f})")
             else:
                 todo_ejecutado = False
-                logger.info("Orden Surebet FOK no llenada en %s (%s): %s", cand["Evento"], sel_pata, msg_fok)
+                logger.info("Pata %s no ejecutada en %s (%s): %s", casa_p, cand["Evento"], sel_p, msg)
                 break
 
         if not todo_ejecutado or not estados_orden:
