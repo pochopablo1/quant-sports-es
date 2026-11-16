@@ -88,10 +88,12 @@ def _obtener_proxies_polymarket_verificados() -> list[str]:
 
     def _probar(pr: str) -> str | None:
         try:
-            with httpx.Client(proxy=pr, timeout=5.0) as c:
+            with httpx.Client(proxy=pr, http2=False, timeout=4.5) as c:
                 g = c.get("https://polymarket.com/api/geoblock").json()
                 if g.get("blocked") is False:
-                    return pr
+                    r_clob = c.get("https://clob.polymarket.com/time")
+                    if r_clob.status_code == 200:
+                        return pr
         except Exception:
             pass
         return None
@@ -303,9 +305,9 @@ def firmar_orden_polymarket_clob(
                     if pr_url:
                         sc._ctx.secure_clob._client = httpx.Client(
                             base_url=base_url_clob,
-                            http2=True,
+                            http2=False,
                             proxy=pr_url,
-                            timeout=12.0,
+                            timeout=10.0,
                         )
                     respuesta = sc.post_order(orden_firmada)
                     estado_str = str(getattr(respuesta, "status", "")).upper()
