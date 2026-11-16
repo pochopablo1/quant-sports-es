@@ -319,10 +319,10 @@ def extraer_todas_las_plataformas_en_paralelo() -> Dict[str, Any]:
     from normalizador.emparejador import normalizar_filas
 
     tareas = {
-        "SX Bet": lambda: extraer_sx_bet(tamano_pagina=100),
-        "Limitless": lambda: extraer_limitless(max_paginas=6),
+        "SX Bet": lambda: extraer_sx_bet(tamano_pagina=100, max_paginas=6),
+        "Limitless": lambda: extraer_limitless(max_paginas=10),
         "Kalshi": lambda: extraer_kalshi(),
-        "Futuur": lambda: extraer_futuur(max_paginas=4),
+        "Futuur": lambda: extraer_futuur(max_paginas=8),
         "Overtime": lambda: extraer_overtime_markets_v2(),
         "Smarkets": lambda: extraer_smarkets(limite_eventos=40),
         "Vegas_AN_DK": lambda: extraer_oraculo_gratis_en_vivo(),
@@ -333,8 +333,8 @@ def extraer_todas_las_plataformas_en_paralelo() -> Dict[str, Any]:
     triangulos_poly: List[Dict[str, Any]] = []
     conteo_plataformas: Dict[str, int] = {}
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        fut_poly = pool.submit(extraer_polymarket_con_triangulos_y_bids, 100, 5)
+    with ThreadPoolExecutor(max_workers=9) as pool:
+        fut_poly = pool.submit(extraer_polymarket_con_triangulos_y_bids, 100, 15)
         futuros = {pool.submit(fn): nombre for nombre, fn in tareas.items()}
 
         try:

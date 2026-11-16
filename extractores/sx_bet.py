@@ -35,47 +35,58 @@ def _mapear_tipo_mercado_sx(tipo_id: Any) -> str:
         return str(tipo_id or "Ganador")
 
 
-def extraer_sx_bet(tamano_pagina: int = 100) -> List[Dict[str, Any]]:
+def extraer_sx_bet(tamano_pagina: int = 100, max_paginas: int = 6) -> List[Dict[str, Any]]:
     """
-    Extrae mercados activos de SX Bet y cruza con el endpoint /orders-v3/odds/best
-    para obtener cuotas Taker y liquidez en USD.
+    Extrae mercados activos de SX Bet (incluyendo paginación completa y líneas alternas de Spreads/Totales)
+    y cruza con el endpoint /orders-v3/odds/best usando `SX_API_KEY` para obtener cuotas Taker y liquidez en USD.
     """
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
     if SX_API_KEY:
         headers["x-sx-api-key"] = SX_API_KEY
 
-    parametros_mercados = {
-        "onlyMainLine": "true",
-        "pageSize": str(tamano_pagina),
-    }
-
     filas_normalizadas: List[Dict[str, Any]] = []
-
-    try:
-        resp_mercados = requests.get(
-            URL_MERCADOS_ACTIVOS, params=parametros_mercados, headers=headers, timeout=15
-        )
-        resp_mercados.raise_for_status()
-        payload_mercados = resp_mercados.json()
-    except Exception as exc:
-        logger.error("Error al consultar mercados activos de SX Bet: %s", exc)
-        return filas_normalizadas
-
-    datos_mercados = payload_mercados.get("data", {})
-    lista_mercados = (
-        datos_mercados.get("markets", [])
-        if isinstance(datos_mercados, dict)
-        else datos_mercados
-    )
-    if not isinstance(lista_mercados, list) or not lista_mercados:
-        return filas_normalizadas
-
-    # Agrupar marketHashes en lotes de hasta 50 para consultar el libro de órdenes
     mapa_mercados: Dict[str, Dict[str, Any]] = {}
-    for m in lista_mercados:
-        m_hash = m.get("marketHash")
-        if m_hash:
-            mapa_mercados[m_hash] = m
+
+    for solo_main in ("true", "false"):
+        pag_key = None
+        for _ in range(max_paginas):
+            parametros_mercados: Dict[str, str] = {
+                "onlyMainLine": solo_main,
+                "pageSize": str(tamano_pagina),
+            }
+            if pag_key:
+                parametros_mercados["paginationKey"] = str(pag_key)
+            try:
+                resp_mercados = requests.get(
+                    URL_MERCADOS_ACTIVOS, params=parametros_mercados, headers=headers, timeout=12
+                )
+                if resp_mercados.status_code != 200:
+                    break
+                payload_mercados = resp_mercados.json()
+            except Exception as exc:
+                logger.debug("Aviso consultando mercados activos de SX Bet: %s", exc)
+                break
+
+            datos_mercados = payload_mercados.get("data", {})
+            lista_mercados = (
+                datos_mercados.get("markets", [])
+                if isinstance(datos_mercados, dict)
+                else datos_mercados
+            )
+            if not isinstance(lista_mercados, list) or not lista_mercados:
+                break
+
+            for m in lista_mercados:
+                m_hash = m.get("marketHash")
+                if m_hash:
+                    mapa_mercados[m_hash] = m
+
+            pag_key = datos_mercados.get("nextKey") if isinstance(datos_mercados, dict) else None
+            if not pag_key or solo_main == "true":
+                break
+
+    if not mapa_mercados:
+        return filas_normalizadas
 
     hashes_totales = list(mapa_mercados.keys())
     tamano_lote = 50

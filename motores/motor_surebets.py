@@ -143,13 +143,13 @@ def ejecutar_motor_e_inplay_en_vivo(mercados: List[Dict[str, Any]]) -> Dict[str,
     }
 
 
-def _evento_valido_pre_partido(inicio_utc_str: Any, max_horas: float = 72.0) -> bool:
-    """Devuelve True si el partido aún no comenzó (faltan >= 10 min) y es dentro de las próximas `max_horas`."""
+def _evento_valido_pre_partido(inicio_utc_str: Any, max_horas: float = 96.0) -> bool:
+    """Devuelve True si el partido está en juego ahora mismo (últimas 3.5h) o se juega dentro de las próximas `max_horas`."""
     dt = parsear_datetime_utc(inicio_utc_str)
     if dt is None:
         return True
     ahora = datetime.now(tz=timezone.utc)
-    if dt <= (ahora + timedelta(minutes=10)):
+    if dt <= (ahora - timedelta(hours=3.5)):
         return False
     if dt > (ahora + timedelta(hours=max_horas)):
         return False
