@@ -276,6 +276,23 @@ def firmar_orden_polymarket_clob(
         contratos = max(5.0, round(float(tamano_usd) / precio_limpio, 2))
         costo_real_usd = round(contratos * precio_limpio, 2)
 
+        # CANDADO 1: Tope máximo duro por orden individual ($6.00 USD)
+        if costo_real_usd > 6.00:
+            sc.close()
+            return False, f"CANDADO DE MONTO ACTIVO: Costo ${costo_real_usd:.2f} supera el máximo de $6.00 USD por orden."
+
+        # CANDADO 2: Verificación On-Chain previa en Polymarket para JAMÁS comprar 2 veces el mismo token/mercado
+        try:
+            pos_actuales = sc.list_positions().first_page().items
+            for p_item in pos_actuales:
+                asset_id = str(getattr(p_item, "asset", "") or getattr(p_item, "token_id", ""))
+                if asset_id == str(token_id) and float(getattr(p_item, "total_cost_usdc", 0.0)) >= 1.0:
+                    sc.close()
+                    return False, f"CANDADO ON-CHAIN: Ya tenés una posición en este token ({p_item.title}). No se duplica."
+        except Exception as e_pos_chk:
+            sc.close()
+            return False, f"CANDADO DE SEGURIDAD: No se pudo verificar posiciones previas ({e_pos_chk}); abortando por seguridad."
+
         if str(tipo_orden).upper() == "FOK" and const_lado == "BUY":
             orden_firmada = sc.create_market_order(
                 token_id=str(token_id),
@@ -292,13 +309,13 @@ def firmar_orden_polymarket_clob(
                 side=const_lado,
             )
 
-        # Enviar orden usando conexión directa o puente HTTPS anti-geobloqueo (AR / PythonAnywhere US)
+        # Enviar orden usando máximo 2 intentos y verificando On-Chain si hubo timeout de respuesta del proxy
         cliente_orig = sc._ctx.secure_clob._client
         base_url_clob = sc._ctx.secure_clob._base_url
         proxies_disp = _obtener_proxies_polymarket_verificados()
         ultimo_error = None
 
-        lista_intentos = [None] if not proxies_disp else proxies_disp
+        lista_intentos = [None] if not proxies_disp else proxies_disp[:2]
         try:
             for pr_url in lista_intentos:
                 try:
@@ -336,6 +353,20 @@ def firmar_orden_polymarket_clob(
                     ultimo_error = e_post
                     if pr_url and pr_url in _CACHE_PROXIES_POLY:
                         _CACHE_PROXIES_POLY.remove(pr_url)
+                    # CANDADO 3: Si el proxy dio timeout después de enviar el POST, verificar On-Chain si la orden YA entró antes de reintentar
+                    try:
+                        import time as _t
+                        _t.sleep(2.5)
+                        sc._ctx.secure_clob._client = cliente_orig
+                        for p_item in sc.list_positions().first_page().items:
+                            asset_id = str(getattr(p_item, "asset", "") or getattr(p_item, "token_id", ""))
+                            if asset_id == str(token_id) and float(getattr(p_item, "total_cost_usdc", 0.0)) >= 1.0:
+                                return (
+                                    True,
+                                    f"Orden CONFIRMADA On-Chain tras timeout de proxy ({contratos} contratos @ ${precio_limpio:.2f} = ${costo_real_usd:.2f} USD)",
+                                )
+                    except Exception:
+                        pass
                 finally:
                     sc._ctx.secure_clob._client = cliente_orig
         finally:

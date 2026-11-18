@@ -52,7 +52,10 @@ def _cargar_claves_ya_ejecutadas() -> set:
         modo_real = os.getenv("EJECUCION_REAL_HABILITADA", "false").lower() == "true"
         prefijo = "ORDEN_REAL" if modo_real else "PAPER"
         df_f = df[df["Estado_Ejecucion"].astype(str).str.startswith(prefijo)]
-        return set(df_f["Clave_Unica"].astype(str).tolist())
+        claves = set(df_f["Clave_Unica"].astype(str).tolist())
+        if "Evento" in df_f.columns:
+            claves.update(df_f["Evento"].astype(str).tolist())
+        return claves
     except Exception:
         return set()
 
@@ -161,7 +164,7 @@ def ejecutar_oportunidades_surebets(
             break
 
         clave = f"{cand['Tipo_Estrategia']}|{cand['Evento']}|{cand['Pata_1_Seleccion']}|{cand['Pata_2_Seleccion']}"
-        if clave in ya_ejecutadas:
+        if clave in ya_ejecutadas or cand["Evento"] in ya_ejecutadas:
             continue
 
         # Verificar y ejecutar AMBAS patas (Polymarket y/o SX Bet)
@@ -206,6 +209,13 @@ def ejecutar_oportunidades_surebets(
         if not verif_ok or len(ordenes_preparadas) != 2:
             continue
 
+        # CANDADO MARK-BEFORE-SEND: Bloquear clave y evento ANTES de enviar cualquier orden a la red
+        ya_ejecutadas.add(clave)
+        ya_ejecutadas.add(cand["Evento"])
+
+        # Si hay una pata de SX Bet, ejecutar SIEMPRE primero SX Bet para que si falla no gaste nada en Polymarket
+        ordenes_preparadas.sort(key=lambda x: 0 if x[0] == "SX Bet" else 1)
+
         # Disparar AMBAS patas (Pata 1 + Pata 2)
         estados_orden = []
         todo_ejecutado = True
@@ -235,10 +245,9 @@ def ejecutar_oportunidades_surebets(
                 logger.info("Pata %s no ejecutada en %s (%s): %s", casa_p, cand["Evento"], sel_p, msg)
                 break
 
-        if not todo_ejecutado or not estados_orden:
+        # Si al menos 1 orden salió a la red, registrarla SIEMPRE en el CSV para que jamás se repita en el próximo minuto
+        if not estados_orden:
             continue
-
-        ya_ejecutadas.add(clave)
         reg_ejecucion = {
             "Timestamp_UTC": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
             "Clave_Unica": clave,
