@@ -216,15 +216,21 @@ def ejecutar_oportunidades_surebets(
         # Si hay una pata de SX Bet, ejecutar SIEMPRE primero SX Bet para que si falla no gaste nada en Polymarket
         ordenes_preparadas.sort(key=lambda x: 0 if x[0] == "SX Bet" else 1)
 
-        # Disparar AMBAS patas (Pata 1 + Pata 2)
+        # Calcular stakes proporcionales para que AMBAS patas compren exactamente los mismos contratos / mismo cobro
+        suma_precios_vivos = sum(float(x[3]) for x in ordenes_preparadas)
+        presupuesto_par_usd = min(9.50, float(stake_por_pata_usd) * 2.0)
+        pago_objetivo_shares = max(5.2, round(presupuesto_par_usd / max(0.50, suma_precios_vivos), 2))
+
+        # Disparar AMBAS patas (Pata 1 + Pata 2) con monto proporcional exacto
         estados_orden = []
         todo_ejecutado = True
         for casa_p, sel_p, id_ref, precio_vivo, cuota_viva, idx_lado in ordenes_preparadas:
+            stake_pata_exacto = max(1.50, min(5.80, round(pago_objetivo_shares * float(precio_vivo), 2)))
             if casa_p == "Polymarket":
                 exito, msg = firmar_orden_polymarket_clob(
                     token_id=id_ref,
                     precio=precio_vivo,
-                    tamano_usd=stake_por_pata_usd,
+                    tamano_usd=stake_pata_exacto,
                     lado="BUY",
                     tipo_orden="FOK",
                 )
@@ -233,7 +239,7 @@ def ejecutar_oportunidades_surebets(
                     market_hash=id_ref,
                     indice_lado=idx_lado,
                     cuota_decimal=cuota_viva,
-                    tamano_usd=stake_por_pata_usd,
+                    tamano_usd=stake_pata_exacto,
                     tipo_orden="IOC",
                 )
             if exito:

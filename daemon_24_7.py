@@ -92,15 +92,17 @@ def construir_reporte_surebets_2_horas(
     est_w = verificar_estado_wallet()
     pusd_poly = float(est_w.get("polygon_pusd_polymarket", 0.0))
     usdc_sx = float(est_w.get("sx_usdc_sxbet", 0.0))
+    usdc_base = float(est_w.get("base_usdc_limitless", 0.0))
     usdc_poly = float(est_w.get("polygon_usdc_nativo", 0.0))
-    total_liquido = round(pusd_poly + usdc_sx + usdc_poly, 2)
+    total_liquido = round(pusd_poly + usdc_sx + usdc_base + usdc_poly, 2)
 
     lineas = [
         f"⚡ *REPORTE SUREBETS 24/7 — CADA 2 HORAS ({ahora_str})*",
         f"⏱️ *Escaneos (1 min):* `{ciclos_en_ventana} ciclos` | *Mercados en vivo:* `{total_mercados}`",
-        f"💼 *Saldos Líquidos Listos:* `${total_liquido:.2f} USD`",
+        f"💼 *Saldos Líquidos Listos:* `${total_liquido:.2f} USD` (+ `$7.80 USD` en Pasillo UConn)",
         f"  • Polymarket (`pUSD`): `${pusd_poly:.2f} USD`",
         f"  • SX Bet (`USDC` 0% Fee): `${usdc_sx:.2f} USD`",
+        f"  • Limitless / Overtime (`Base USDC`): `${usdc_base:.2f} USD`",
         "",
     ]
 

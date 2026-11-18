@@ -89,6 +89,25 @@ def verificar_pata_sx_bet_vivo(market_hash: str, indice_lado: int, stake_usd: fl
         return False, 0.0, 0.0, f"Error SX: {exc}"
 
 
+def verificar_pata_limitless_vivo(slug_mercado: str, indice_lado: int, stake_usd: float) -> Tuple[bool, float, float, str]:
+    """Verifica cuota Taker y liquidez en vivo en Limitless Exchange (Base L2 CLOB)."""
+    try:
+        resp = requests.get(f"https://api.limitless.exchange/markets/{slug_mercado}", timeout=6)
+        if resp.status_code != 200:
+            return False, 0.0, 0.0, f"HTTP {resp.status_code}"
+        m = resp.json()
+        trade_buy = ((m.get("tradePrices") or {}).get("buy") or {}).get("market") or m.get("prices") or []
+        if not isinstance(trade_buy, list) or len(trade_buy) < 2:
+            return False, 0.0, 0.0, "Sin precios activos en Limitless"
+        p = float(trade_buy[0 if int(indice_lado) == 1 else 1])
+        liq_usd = max(250.0, float(m.get("volumeFormatted") or 0.0))
+        if not (0.02 < p < 0.98) or liq_usd < stake_usd:
+            return False, 0.0, liq_usd, f"Precio/Liq fuera de rango ({p})"
+        return True, round(1.0 / p, 4), liq_usd, f"Limitless Ask=${p:.2f} (Liq=${liq_usd:.0f})"
+    except Exception as exc:
+        return False, 0.0, 0.0, f"Error Limitless: {exc}"
+
+
 def verificar_surebet_2_patas_atomica(
     pata_1: Dict[str, Any],
     pata_2: Dict[str, Any],

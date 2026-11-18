@@ -136,12 +136,14 @@ def extraer_polymarket_con_triangulos_y_bids(limite: int = 100, paginas: int = 5
 
 def extraer_overtime_markets_v2() -> List[Dict[str, Any]]:
     """
-    Intenta consultar el feed público de Overtime Markets V2 (Optimism / Arbitrum / Base Sports AMM).
+    Intenta consultar el feed de Overtime Markets V2 (Base 8453 / Arbitrum 42161 / Optimism 10 Sports AMM).
     Overtime no cobra fee de taker aparte (el margen está incluido en la cuota on-chain).
     """
     filas: List[Dict[str, Any]] = []
     urls_candidatas = [
-        "https://api.overtimemarkets.xyz/overtime-v2/networks/10/markets",
+        "https://api.overtime.io/overtime-v2/networks/8453/markets",
+        "https://api.overtime.io/overtime-v2/networks/42161/markets",
+        "https://api.overtimemarkets.xyz/overtime-v2/networks/8453/markets",
         "https://api.overtimemarkets.xyz/overtime-v2/networks/42161/markets",
     ]
     headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
@@ -183,6 +185,53 @@ def extraer_overtime_markets_v2() -> List[Dict[str, Any]]:
                     })
         except Exception:
             continue
+    return filas
+
+
+def extraer_manifold_deportes() -> List[Dict[str, Any]]:
+    """Extrae mercados deportivos binarios de Manifold Markets para referencia cruzada adicional."""
+    filas: List[Dict[str, Any]] = []
+    try:
+        resp = requests.get(
+            "https://api.manifold.markets/v0/search-markets",
+            params={"term": "vs", "filter": "open", "contractType": "BINARY", "limit": "100"},
+            timeout=6,
+        )
+        if resp.status_code != 200:
+            return filas
+        for m in resp.json():
+            preg = str(m.get("question") or "").strip()
+            if " vs " not in preg.lower() and " vs. " not in preg.lower():
+                continue
+            p = float(m.get("probability") or 0.0)
+            if not (0.05 < p < 0.95):
+                continue
+            partes = preg.replace(" vs. ", " vs ").split(" vs ")
+            if len(partes) != 2:
+                continue
+            eq1 = partes[0].split(":")[-1].replace("Will ", "").strip()
+            eq2 = partes[1].split("?")[0].replace("win", "").strip()
+            c1 = round(1.0 / p, 4)
+            c2 = round(1.0 / (1.0 - p), 4)
+            filas.append({
+                "Plataforma": "Manifold",
+                "Deporte": "Deportes",
+                "Liga": "General",
+                "Evento": f"{eq1} vs {eq2}",
+                "Inicio_UTC": str(m.get("closeTime") or ""),
+                "Tipo_Mercado": "Ganador (Moneyline)",
+                "Linea": "N/A",
+                "Lado_1": eq1,
+                "Cuota_Taker_1": c1,
+                "Liquidez_1_USD": float(m.get("totalLiquidity") or 100.0),
+                "Lado_2": eq2,
+                "Cuota_Taker_2": c2,
+                "Liquidez_2_USD": float(m.get("totalLiquidity") or 100.0),
+                "Overround_Libro_Pct": 0.0,
+                "ID_Mercado": str(m.get("id") or ""),
+            })
+    except Exception:
+        pass
     return filas
 
 
@@ -324,6 +373,7 @@ def extraer_todas_las_plataformas_en_paralelo() -> Dict[str, Any]:
         "Kalshi": lambda: extraer_kalshi(),
         "Futuur": lambda: extraer_futuur(max_paginas=8),
         "Overtime": lambda: extraer_overtime_markets_v2(),
+        "Manifold": lambda: extraer_manifold_deportes(),
         "Smarkets": lambda: extraer_smarkets(limite_eventos=40),
         "Vegas_AN_DK": lambda: extraer_oraculo_gratis_en_vivo(),
         "Vegas_InPlay_Live": lambda: extraer_oraculo_inplay_en_vivo(),
