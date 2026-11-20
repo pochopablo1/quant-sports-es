@@ -46,7 +46,13 @@ def extraer_polymarket_con_triangulos_y_bids(limite: int = 100, paginas: int = 5
     url = "https://gamma-api.polymarket.com/events"
     headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
 
-    for tag_consulta, max_pags in [("sports", paginas), ("soccer", 2)]:
+    for tag_consulta, max_pags in [
+        ("sports", paginas),
+        ("soccer", 3),
+        ("tennis", 2),
+        ("basketball", 2),
+        ("esports", 2),
+    ]:
         for pag in range(max_pags):
             params = {
                 "active": "true",
@@ -68,7 +74,7 @@ def extraer_polymarket_con_triangulos_y_bids(limite: int = 100, paginas: int = 5
 
             for ev in eventos:
                 titulo_ev = str(ev.get("title") or "").strip()
-                inicio_utc = str(ev.get("startTime") or ev.get("startDate") or ev.get("endDate") or "")
+                inicio_utc = str(ev.get("startTime") or ev.get("endDate") or ev.get("startDate") or "")
                 mkts = ev.get("markets") or []
                 if not mkts:
                     continue

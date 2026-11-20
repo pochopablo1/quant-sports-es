@@ -76,37 +76,46 @@ def extraer_polymarket(limite: int = 100, paginas: int = 5) -> List[Dict[str, An
     eventos: List[Dict[str, Any]] = []
     ids_eventos_vistos = set()
 
-    for pag in range(paginas):
-        parametros = {
-            "active": "true",
-            "closed": "false",
-            "tag_slug": "sports",
-            "order": "volume24hr",
-            "ascending": "false",
-            "limit": str(limite),
-            "offset": str(pag * limite),
-        }
-        lote = None
-        for intento in range(3):
-            try:
-                respuesta = requests.get(URL_GAMMA_EVENTS, params=parametros, timeout=15)
-                respuesta.raise_for_status()
-                lote = respuesta.json()
+    consultas_gamma = [
+        ("sports", "volume24hr", paginas),
+        ("sports", "startDate", 4),
+        ("soccer", "volume24hr", 2),
+        ("tennis", "volume24hr", 2),
+        ("basketball", "volume24hr", 2),
+        ("esports", "volume24hr", 2),
+    ]
+    for tag_q, orden_q, max_p in consultas_gamma:
+        for pag in range(max_p):
+            parametros = {
+                "active": "true",
+                "closed": "false",
+                "tag_slug": tag_q,
+                "order": orden_q,
+                "ascending": "false",
+                "limit": str(limite),
+                "offset": str(pag * limite),
+            }
+            lote = None
+            for intento in range(2):
+                try:
+                    respuesta = requests.get(URL_GAMMA_EVENTS, params=parametros, timeout=12)
+                    respuesta.raise_for_status()
+                    lote = respuesta.json()
+                    break
+                except Exception as exc:
+                    if intento < 1:
+                        time.sleep(1.0)
+                    else:
+                        logger.debug("Aviso Polymarket Gamma API (%s pág %d): %s", tag_q, pag + 1, exc)
+            if not isinstance(lote, list) or not lote:
                 break
-            except Exception as exc:
-                if intento < 2:
-                    time.sleep(1.5)
-                else:
-                    logger.error("Error al consultar Polymarket Gamma API pág %d: %s", pag + 1, exc)
-        if not isinstance(lote, list) or not lote:
-            break
-        for ev in lote:
-            ev_id = ev.get("id")
-            if ev_id not in ids_eventos_vistos:
-                ids_eventos_vistos.add(ev_id)
-                eventos.append(ev)
-        if len(lote) < limite:
-            break
+            for ev in lote:
+                ev_id = ev.get("id")
+                if ev_id not in ids_eventos_vistos:
+                    ids_eventos_vistos.add(ev_id)
+                    eventos.append(ev)
+            if len(lote) < limite:
+                break
 
     if not eventos:
         return filas_normalizadas
@@ -168,8 +177,11 @@ def extraer_polymarket(limite: int = 100, paginas: int = 5) -> List[Dict[str, An
                     overround_3way = round((p1 + p2 + p_draw - 1.0) * 100.0, 2)
                     inicio_3w = (
                         m1.get("gameStartTime")
-                        or evento.get("startDate")
+                        or evento.get("startTime")
+                        or m1.get("startTime")
+                        or evento.get("endDate")
                         or m1.get("endDate")
+                        or evento.get("startDate")
                         or ""
                     )
                     cond_3w = str(m1.get("conditionId") or m1.get("id") or "")
@@ -239,8 +251,11 @@ def extraer_polymarket(limite: int = 100, paginas: int = 5) -> List[Dict[str, An
 
             inicio_utc = (
                 mercado.get("gameStartTime")
-                or evento.get("startDate")
+                or evento.get("startTime")
+                or mercado.get("startTime")
+                or evento.get("endDate")
                 or mercado.get("endDate")
+                or evento.get("startDate")
                 or ""
             )
 

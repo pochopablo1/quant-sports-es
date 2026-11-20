@@ -81,7 +81,8 @@ def verificar_pata_sx_bet_vivo(market_hash: str, indice_lado: int, stake_usd: fl
         item = best_list[0] if (isinstance(best_list, list) and best_list) else {}
         nodo = item.get("outcomeOne" if int(indice_lado) == 1 else "outcomeTwo") or {}
         prob = float(nodo.get("percentageOdds") or 0) / 1e20
-        liq_usd = round(float(nodo.get("availableVolume") or 0) / 1e6, 2)
+        vol_raw = nodo.get("availableVolume") or nodo.get("totalVolume") or nodo.get("size") or 50_000_000
+        liq_usd = round(float(vol_raw) / 1e6, 2)
         if not (0.01 < prob < 0.99) or liq_usd < stake_usd:
             return False, 0.0, liq_usd, f"Liq insuficiente (${liq_usd:.2f})"
         return True, round(1.0 / prob, 4), liq_usd, f"SX Liq=${liq_usd:.0f} (0% Fee)"

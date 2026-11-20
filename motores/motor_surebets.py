@@ -116,6 +116,7 @@ def ejecutar_motor_e_inplay_en_vivo(mercados: List[Dict[str, Any]]) -> Dict[str,
             cruces_inplay.append({
                 "Evento": m1.get("Evento", ""),
                 "Deporte": m1.get("Deporte", ""),
+                "Inicio_UTC": m1.get("Inicio_UTC", ""),
                 "Min_Juego": m1.get("Minutos_En_Juego", 0.0),
                 "Mercado": f"{m1.get('Tipo_Mercado')} ({m1.get('Linea')})",
                 "Pata_1": f"[{p_a}] {sel_a} @ {ca:.3f} (${1/ca:.2f})",
@@ -143,11 +144,16 @@ def ejecutar_motor_e_inplay_en_vivo(mercados: List[Dict[str, Any]]) -> Dict[str,
     }
 
 
-def _evento_valido_pre_partido(inicio_utc_str: Any, max_horas: float = 96.0) -> bool:
-    """Devuelve True si el partido está en juego ahora mismo (últimas 3.5h) o se juega dentro de las próximas `max_horas`."""
+def _evento_valido_pre_partido(inicio_utc_str: Any, max_horas: float = 8.0) -> bool:
+    """
+    REGLA DE ROTACIÓN RÁPIDA DE CAPITAL:
+    Devuelve True EXCLUSIVAMENTE si el partido está EN VIVO ahora mismo (últimas 3.5h)
+    o se juega y liquida dentro de las próximas `max_horas` (8.0 horas por defecto).
+    Prohíbe inmovilizar capital en partidos a 2 o 3 días vista.
+    """
     dt = parsear_datetime_utc(inicio_utc_str)
     if dt is None:
-        return True
+        return False
     ahora = datetime.now(tz=timezone.utc)
     if dt <= (ahora - timedelta(hours=3.5)):
         return False
@@ -479,6 +485,7 @@ def ejecutar_motores_cross_exchange(
                                     pasillos_middles.append({
                                         "Evento": ev_1,
                                         "Deporte": dep,
+                                        "Inicio_UTC": m1.get("Inicio_UTC", ""),
                                         "Pata_1": f"[{plat_over}] Over {lin_baja} @ {c_over_bajo:.3f} (${1/c_over_bajo:.2f})",
                                         "Pata_2": f"[{plat_under}] Under {lin_alta} @ {c_under_alto:.3f} (${1/c_under_alto:.2f})",
                                         "Pata_1_Casa": plat_over,
@@ -557,6 +564,7 @@ def ejecutar_motores_cross_exchange(
                                 pasillos_middles.append({
                                     "Evento": ev_1,
                                     "Deporte": dep,
+                                    "Inicio_UTC": m1.get("Inicio_UTC", ""),
                                     "Pata_1": f"[{plat_fav}] {fav_1} -{sp_bajo} @ {c_fav_bajo:.3f} (${1/c_fav_bajo:.2f})",
                                     "Pata_2": f"[{plat_dog}] {dog_1} +{sp_alto} @ {c_dog_alto:.3f} (${1/c_dog_alto:.2f})",
                                     "Pata_1_Casa": plat_fav,

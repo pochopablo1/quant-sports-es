@@ -8,7 +8,7 @@ Evalúa las oportunidades detectadas por los 5 Motores de Surebets cada 1 minuto
 Verifica el Orderbook L2 (`/book` en Polymarket y `/orders-v3/odds/best` en SX Bet) al milisegundo y dispara
 la orden FOK real cuando `EJECUCION_REAL_HABILITADA=true` en `.env`.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 import os
 from pathlib import Path
@@ -24,6 +24,7 @@ if RUTA_SPORTS.exists() and str(RUTA_SPORTS) not in sys.path:
     sys.path.append(str(RUTA_SPORTS))
 
 from configuracion import DIRECTORIO_DATOS, calcular_cuota_efectiva_neta
+from normalizador.emparejador import parsear_datetime_utc
 from ejecutor.verificador_atomico import (
     verificar_pata_polymarket_vwap,
     verificar_pata_sx_bet_vivo,
@@ -60,6 +61,19 @@ def _cargar_claves_ya_ejecutadas() -> set:
         return set()
 
 
+def _es_evento_en_vivo_o_liquida_hoy(inicio_utc_str: Any, max_horas: float = 8.0) -> bool:
+    """
+    CANDADO DE VELOCIDAD DE CAPITAL (SOLO EN VIVO O LIQUIDACIÓN EN HORAS):
+    Solo permite operar partidos que estén EN VIVO ahora mismo (últimas 3.5h)
+    o que empiecen dentro de las próximas `max_horas` (8h).
+    """
+    dt = parsear_datetime_utc(inicio_utc_str)
+    if dt is None:
+        return False
+    ahora = datetime.now(tz=timezone.utc)
+    return (ahora - timedelta(hours=3.5)) <= dt <= (ahora + timedelta(hours=max_horas))
+
+
 def ejecutar_oportunidades_surebets(
     surebets_taker: List[Dict[str, Any]],
     arbs_maker_taker: List[Dict[str, Any]],
@@ -94,6 +108,7 @@ def ejecutar_oportunidades_surebets(
                     "Tipo_Estrategia": "SUREBET_2CASAS_INPLAY",
                     "Evento": ip.get("Evento", ""),
                     "Deporte": ip.get("Deporte", ""),
+                    "Inicio_UTC": ip.get("Inicio_UTC", ""),
                     "Mercado": ip.get("Mercado", ""),
                     "Pata_1_Casa": c1_casa,
                     "Pata_1_Seleccion": ip.get("Pata_1_Seleccion", ""),
@@ -108,8 +123,10 @@ def ejecutar_oportunidades_surebets(
                     "ROI_Esperado_Pct": max(roi_oc, roi_26),
                 })
 
-    # 2. Prioridad 2: Surebets Cross-Exchange Pre-Partido de 2 Patas (Polymarket <-> SX Bet)
+    # 2. Prioridad 2: Surebets Cross-Exchange del Día (Liquidan en horas: <= 8h)
     for sb in surebets_taker:
+        if not _es_evento_en_vivo_o_liquida_hoy(sb.get("Inicio_UTC")):
+            continue
         c1_casa = str(sb.get("Pata_1_Casa", ""))
         c2_casa = str(sb.get("Pata_2_Casa", ""))
         if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
@@ -120,6 +137,7 @@ def ejecutar_oportunidades_surebets(
                     "Tipo_Estrategia": "SUREBET_2CASAS_POLY_SXBET",
                     "Evento": sb.get("Evento", ""),
                     "Deporte": sb.get("Deporte", ""),
+                    "Inicio_UTC": sb.get("Inicio_UTC", ""),
                     "Mercado": sb.get("Mercado", ""),
                     "Pata_1_Casa": c1_casa,
                     "Pata_1_Seleccion": sb.get("Pata_1_Seleccion", ""),
@@ -134,8 +152,10 @@ def ejecutar_oportunidades_surebets(
                     "ROI_Esperado_Pct": max(roi_oc, roi_26),
                 })
 
-    # 3. Prioridad 3: Pasillos de Riesgo Cero donde AMBAS patas están en Polymarket y/o SX Bet (Costo <= $1.00, 0% riesgo)
+    # 3. Prioridad 3: Pasillos de Riesgo Cero EN VIVO o del Día (Liquidan en horas: <= 8h)
     for pas in pasillos_middles:
+        if not _es_evento_en_vivo_o_liquida_hoy(pas.get("Inicio_UTC")):
+            continue
         c1_casa = str(pas.get("Pata_1_Casa", ""))
         c2_casa = str(pas.get("Pata_2_Casa", ""))
         if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
@@ -145,6 +165,7 @@ def ejecutar_oportunidades_surebets(
                     "Tipo_Estrategia": "PASILLO_2PATAS_RIESGO_CERO",
                     "Evento": pas.get("Evento", ""),
                     "Deporte": pas.get("Deporte", ""),
+                    "Inicio_UTC": pas.get("Inicio_UTC", ""),
                     "Mercado": pas.get("Ventana_Ganar_Ambas", "Pasillo"),
                     "Pata_1_Casa": c1_casa,
                     "Pata_1_Seleccion": pas.get("Pata_1_Seleccion", ""),
