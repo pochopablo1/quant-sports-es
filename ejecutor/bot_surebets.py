@@ -99,13 +99,17 @@ def ejecutar_oportunidades_surebets(
     for ip in cruces_inplay:
         c1_casa = str(ip.get("Pata_1_Casa", ""))
         c2_casa = str(ip.get("Pata_2_Casa", ""))
+        roi_oc = float(ip.get("ROI_OnChain_0Bps_Pct", -99.0))
+        roi_26 = float(ip.get("ROI_Neto_2026_Pct", -99.0))
+        roi_max = max(roi_oc, roi_26)
+        ev_nombre = ip.get("Evento", "")
+
         if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
-            roi_oc = float(ip.get("ROI_OnChain_0Bps_Pct", -99.0))
-            roi_26 = float(ip.get("ROI_Neto_2026_Pct", -99.0))
-            if max(roi_oc, roi_26) >= 0.40:
+            if roi_max >= 0.40:
+                logger.info("🎯 [IN-PLAY ACCIONABLE] %s | [%s] vs [%s] | ROI: %+.2f%%", ev_nombre, c1_casa, c2_casa, roi_max)
                 candidatas.append({
                     "Tipo_Estrategia": "SUREBET_2CASAS_INPLAY",
-                    "Evento": ip.get("Evento", ""),
+                    "Evento": ev_nombre,
                     "Deporte": ip.get("Deporte", ""),
                     "Inicio_UTC": ip.get("Inicio_UTC", ""),
                     "Mercado": ip.get("Mercado", ""),
@@ -119,24 +123,31 @@ def ejecutar_oportunidades_surebets(
                     "Pata_2_Cuota": float(ip.get("Pata_2_Cuota_Bruta", 0.0)),
                     "Pata_2_ID": ip.get("Pata_2_ID_Mercado", ""),
                     "Pata_2_Idx": int(ip.get("Pata_2_Indice_Lado", 2)),
-                    "ROI_Esperado_Pct": max(roi_oc, roi_26),
+                    "ROI_Esperado_Pct": roi_max,
                 })
+        else:
+            logger.debug("ℹ️ [In-Play Informativo] %s | [%s] vs [%s] ROI: %+.2f%% (No ejecutable: solo trading en %s)", ev_nombre, c1_casa, c2_casa, roi_max, casas_con_billetera)
 
     # 2. Prioridad 2: Surebets Cross-Exchange del Día (Liquidan en horas: <= 14h)
     for sb in surebets_taker:
-        if not _es_evento_en_vivo_o_liquida_hoy(sb.get("Inicio_UTC"), max_horas=14.0):
+        ini_utc = sb.get("Inicio_UTC")
+        if not _es_evento_en_vivo_o_liquida_hoy(ini_utc, max_horas=14.0):
             continue
         c1_casa = str(sb.get("Pata_1_Casa", ""))
         c2_casa = str(sb.get("Pata_2_Casa", ""))
+        roi_oc = float(sb.get("ROI_Neto_OnChain_0Bps_Pct", -99.0))
+        roi_26 = float(sb.get("ROI_Neto_Tabla_2026_Pct", -99.0))
+        roi_max = max(roi_oc, roi_26)
+        ev_nombre = sb.get("Evento", "")
+
         if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
-            roi_oc = float(sb.get("ROI_Neto_OnChain_0Bps_Pct", -99.0))
-            roi_26 = float(sb.get("ROI_Neto_Tabla_2026_Pct", -99.0))
-            if max(roi_oc, roi_26) >= 0.35:
+            if roi_max >= 0.35:
+                logger.info("🎯 [SUREBET HOY ACCIONABLE] %s | [%s] vs [%s] | ROI: %+.2f%%", ev_nombre, c1_casa, c2_casa, roi_max)
                 candidatas.append({
                     "Tipo_Estrategia": "SUREBET_2CASAS_POLY_SXBET",
-                    "Evento": sb.get("Evento", ""),
+                    "Evento": ev_nombre,
                     "Deporte": sb.get("Deporte", ""),
-                    "Inicio_UTC": sb.get("Inicio_UTC", ""),
+                    "Inicio_UTC": ini_utc,
                     "Mercado": sb.get("Mercado", ""),
                     "Pata_1_Casa": c1_casa,
                     "Pata_1_Seleccion": sb.get("Pata_1_Seleccion", ""),
@@ -148,26 +159,42 @@ def ejecutar_oportunidades_surebets(
                     "Pata_2_Cuota": float(sb.get("Pata_2_Cuota_Bruta", 0.0)),
                     "Pata_2_ID": sb.get("Pata_2_ID_Mercado", ""),
                     "Pata_2_Idx": int(sb.get("Pata_2_Indice_Lado", 2)),
-                    "ROI_Esperado_Pct": max(roi_oc, roi_26),
+                    "ROI_Esperado_Pct": roi_max,
                 })
+        else:
+            logger.debug("ℹ️ [Surebet Informativa] %s | [%s] vs [%s] ROI: %+.2f%% (No ejecutable: solo trading en %s)", ev_nombre, c1_casa, c2_casa, roi_max, casas_con_billetera)
 
     # 3. Prioridad 3: Maker-Taker Arbitraje del Día (Pata 1 Maker 0% Fee -> Pata 2 Taker FOK)
     for mt in (arbs_maker_taker or []):
-        if not _es_evento_en_vivo_o_liquida_hoy(mt.get("Inicio_UTC"), max_horas=14.0):
+        ini_utc = mt.get("Inicio_UTC")
+        if not _es_evento_en_vivo_o_liquida_hoy(ini_utc, max_horas=14.0):
             continue
         c1_casa = str(mt.get("Pata_1_Casa", ""))
         c2_casa = str(mt.get("Pata_2_Casa", ""))
+        roi_mt = float(mt.get("ROI_Maker_Taker_Pct", -99.0))
+        ev_nombre = mt.get("Evento", "")
+
         if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
-            roi_mt = float(mt.get("ROI_Maker_Taker_Pct", -99.0))
             if roi_mt >= 0.35:
+                logger.info("🎯 [MAKER-TAKER ACCIONABLE] %s | [%s] vs [%s] | ROI: %+.2f%%", ev_nombre, c1_casa, c2_casa, roi_mt)
                 candidatas.append({
                     "Tipo_Estrategia": "MAKER_TAKER_2CASAS",
-                    "Evento": mt.get("Evento", ""),
+                    "Evento": ev_nombre,
                     "Deporte": mt.get("Deporte", ""),
-                    "Inicio_UTC": mt.get("Inicio_UTC", ""),
+                    "Inicio_UTC": ini_utc,
                     "Mercado": mt.get("Mercado", "Maker-Taker"),
                     "Pata_1_Casa": c1_casa,
                     "Pata_1_Seleccion": mt.get("Pata_1_Seleccion", ""),
+                    "Pata_1_Cuota": float(mt.get("Pata_1_Cuota_Bruta", 0.0)),
+                    "Pata_1_ID": mt.get("Pata_1_ID_Mercado", ""),
+                    "Pata_1_Idx": int(mt.get("Pata_1_Indice_Lado", 1)),
+                    "Pata_2_Casa": c2_casa,
+                    "Pata_2_Seleccion": mt.get("Pata_2_Seleccion", ""),
+                    "Pata_2_Cuota": float(mt.get("Pata_2_Cuota_Bruta", 0.0)),
+                    "Pata_2_ID": mt.get("Pata_2_ID_Mercado", ""),
+                    "Pata_2_Idx": int(mt.get("Pata_2_Indice_Lado", 2)),
+                    "ROI_Esperado_Pct": roi_mt,
+                })
                     "Pata_1_Cuota": float(mt.get("Pata_1_Cuota_Bruta", 0.0)),
                     "Pata_1_ID": mt.get("Pata_1_ID_Mercado", ""),
                     "Pata_1_Idx": int(mt.get("Pata_1_Indice_Lado", 1)),
@@ -213,6 +240,7 @@ def ejecutar_oportunidades_surebets(
 
         clave = f"{cand['Tipo_Estrategia']}|{cand['Evento']}|{cand['Pata_1_Seleccion']}|{cand['Pata_2_Seleccion']}"
         if clave in ya_ejecutadas or cand["Evento"] in ya_ejecutadas:
+            logger.info("⏭️ [Filtro Antiduplicado] Omitiendo %s: ya fue operado hoy.", cand["Evento"])
             continue
 
         # Verificar y ejecutar AMBAS patas (Polymarket y/o SX Bet)
@@ -229,32 +257,39 @@ def ejecutar_oportunidades_surebets(
                 tok_id = _extraer_token_id_polymarket(id_mkt, idx_lado)
                 if not tok_id:
                     verif_ok = False
+                    detalles_verif.append(f"Poly({sel_p}): Sin Token ID CLOB")
                     break
                 ok_p, cuota_vwap, liq_top, _, det_p = verificar_pata_polymarket_vwap(tok_id, stake_por_pata_usd)
                 if not ok_p or cuota_vwap <= 1.02:
                     verif_ok = False
+                    detalles_verif.append(f"Poly({sel_p}): {det_p}")
                     break
                 precio_vivo = round(1.0 / cuota_vwap, 2)
                 if not (0.08 <= precio_vivo <= 0.93) or (1.0 / cuota_vwap) > (1.0 / cuota_esp) + 0.02:
                     verif_ok = False
+                    detalles_verif.append(f"Poly({sel_p}): Precio fuera de rango o cuota degradada ({cuota_vwap:.3f} vs esp {cuota_esp:.3f})")
                     break
                 ordenes_preparadas.append(("Polymarket", sel_p, tok_id, precio_vivo, cuota_vwap, idx_lado))
                 detalles_verif.append(f"Poly({sel_p}): {det_p}")
             elif casa_p == "SX Bet":
                 if not id_mkt:
                     verif_ok = False
+                    detalles_verif.append(f"SXBet({sel_p}): Sin marketHash")
                     break
                 ok_sx, cuota_sx_viva, liq_sx, det_sx = verificar_pata_sx_bet_vivo(id_mkt, idx_lado, stake_por_pata_usd)
                 if not ok_sx or (1.0 / cuota_sx_viva) > (1.0 / cuota_esp) + 0.02:
                     verif_ok = False
+                    detalles_verif.append(f"SXBet({sel_p}): {det_sx}")
                     break
                 ordenes_preparadas.append(("SX Bet", sel_p, id_mkt, round(1.0 / cuota_sx_viva, 4), cuota_sx_viva, idx_lado))
                 detalles_verif.append(f"SXBet({sel_p}): {det_sx}")
             else:
                 verif_ok = False
+                detalles_verif.append(f"{casa_p}: Casa sin conector de ordenes")
                 break
 
         if not verif_ok or len(ordenes_preparadas) != 2:
+            logger.info("⚠️ [Libro L2 Rechazado] %s: %s", cand["Evento"], " ; ".join(detalles_verif) if detalles_verif else "Libro incompleto")
             continue
 
         # CANDADO MARK-BEFORE-SEND: Bloquear clave y evento ANTES de enviar cualquier orden a la red
