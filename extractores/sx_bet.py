@@ -82,7 +82,7 @@ def extraer_sx_bet(tamano_pagina: int = 100, max_paginas: int = 6) -> List[Dict[
                     mapa_mercados[m_hash] = m
 
             pag_key = datos_mercados.get("nextKey") if isinstance(datos_mercados, dict) else None
-            if not pag_key or solo_main == "true":
+            if not pag_key:
                 break
 
     if not mapa_mercados:

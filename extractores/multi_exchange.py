@@ -276,7 +276,7 @@ def extraer_todas_las_plataformas_en_paralelo() -> Dict[str, Any]:
     from normalizador.emparejador import normalizar_filas
 
     tareas = {
-        "SX Bet": lambda: extraer_sx_bet(tamano_pagina=100, max_paginas=6),
+        "SX Bet": lambda: extraer_sx_bet(tamano_pagina=100, max_paginas=8),
         "Limitless": lambda: extraer_limitless(max_paginas=10),
     }
 
