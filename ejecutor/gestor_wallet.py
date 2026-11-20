@@ -216,7 +216,12 @@ def verificar_estado_wallet() -> Dict[str, Any]:
         2,
     )
 
-    usdc_base = _consultar_erc20_balance(RPC_BASE, CONTRATO_USDC_BASE, direccion)
+    limitless_sw = os.getenv("LIMITLESS_SMART_WALLET", "0x0Edfa0E43B848f6e872D71F0433079B02b96384C").strip()
+    usdc_base = round(
+        _consultar_erc20_balance(RPC_BASE, CONTRATO_USDC_BASE, direccion)
+        + (_consultar_erc20_balance(RPC_BASE, CONTRATO_USDC_BASE, limitless_sw) if limitless_sw else 0.0),
+        2,
+    )
     eth_base_gas = _consultar_balance_nativo(RPC_BASE, direccion)
 
     total_usdc_operativo = round(pusd_poly + usdce_poly + usdc_poly + usdc_sx + usdc_base, 2)
