@@ -176,7 +176,7 @@ def leer_moneylines(tags: List[str]) -> List[Dict[str, Any]]:
                     if len(outs) != 2 or len(toks) != 2 or [o.lower() for o in outs] == ["yes", "no"]:
                         continue
                     inicio = parsear_fecha(m.get("gameStartTime") or ev.get("startTime"))
-                    if inicio is None or not (-1 <= (ahora - inicio).total_seconds() / 3600 <= 12):
+                    if inicio is None or not (-6 <= (ahora - inicio).total_seconds() / 3600 <= 12):
                         continue
                     vistos.add(m.get("id"))
                     mercados.append({"id": str(m.get("id")), "titulo": str(ev.get("title") or ""),
