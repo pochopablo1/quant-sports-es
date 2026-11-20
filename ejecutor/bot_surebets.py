@@ -195,16 +195,6 @@ def ejecutar_oportunidades_surebets(
                     "Pata_2_Idx": int(mt.get("Pata_2_Indice_Lado", 2)),
                     "ROI_Esperado_Pct": roi_mt,
                 })
-                    "Pata_1_Cuota": float(mt.get("Pata_1_Cuota_Bruta", 0.0)),
-                    "Pata_1_ID": mt.get("Pata_1_ID_Mercado", ""),
-                    "Pata_1_Idx": int(mt.get("Pata_1_Indice_Lado", 1)),
-                    "Pata_2_Casa": c2_casa,
-                    "Pata_2_Seleccion": mt.get("Pata_2_Seleccion", ""),
-                    "Pata_2_Cuota": float(mt.get("Pata_2_Cuota_Bruta", 0.0)),
-                    "Pata_2_ID": mt.get("Pata_2_ID_Mercado", ""),
-                    "Pata_2_Idx": int(mt.get("Pata_2_Indice_Lado", 2)),
-                    "ROI_Esperado_Pct": roi_mt,
-                })
 
     # 4. Prioridad 4: Pasillos de Riesgo Cero EN VIVO o del Día (Liquidan en horas: <= 14h)
     for pas in pasillos_middles:
