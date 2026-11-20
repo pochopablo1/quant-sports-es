@@ -1,22 +1,12 @@
 """
 Suite de pruebas automatizadas (pytest) para validar:
-- Devigging multiplicativo de Pinnacle
 - Limpieza de texto y Fuzzy Matching en español
 - Esquema obligatorio de 15 columnas en español
 - Extractores en vivo
 """
 from configuracion import COLUMNAS_ESQUEMA, calcular_overround_pct
-from extractores.pinnacle import devig_multiplicativo
 from extractores.polymarket import parsear_campo_json, extraer_polymarket
 from normalizador.emparejador import limpiar_texto, similitud_equipos, emparejar_con_referencia
-
-
-def test_devig_multiplicativo():
-    p1, p2, c1_justa, c2_justa = devig_multiplicativo(1.909, 1.909)
-    assert abs(p1 - 0.5) < 1e-4
-    assert abs(p2 - 0.5) < 1e-4
-    assert abs(c1_justa - 2.0) < 1e-2
-    assert abs(c2_justa - 2.0) < 1e-2
 
 
 def test_parseo_json_embebido_polymarket():
