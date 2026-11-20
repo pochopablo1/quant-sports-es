@@ -60,7 +60,7 @@ def ejecutar_motor_e_inplay_en_vivo(mercados: List[Dict[str, Any]]) -> Dict[str,
     mercados_inplay: List[Dict[str, Any]] = []
     for m in mercados:
         es_live, min_juego = _es_evento_en_juego_inplay(m.get("Inicio_UTC"))
-        if es_live or str(m.get("Plataforma")) == "Vegas_InPlay_Live":
+        if es_live:
             if float(m.get("Cuota_Taker_1") or 0.0) > 1.02 and float(m.get("Cuota_Taker_2") or 0.0) > 1.02:
                 copia = dict(m)
                 copia["Minutos_En_Juego"] = min_juego
