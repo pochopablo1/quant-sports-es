@@ -144,12 +144,13 @@ def ejecutar_motor_e_inplay_en_vivo(mercados: List[Dict[str, Any]]) -> Dict[str,
     }
 
 
-def _evento_valido_pre_partido(inicio_utc_str: Any, max_horas: float = 8.0) -> bool:
+def _evento_valido_pre_partido(inicio_utc_str: Any, max_horas: float = 14.0) -> bool:
     """
-    REGLA DE ROTACIÓN RÁPIDA DE CAPITAL:
-    Devuelve True EXCLUSIVAMENTE si el partido está EN VIVO ahora mismo (últimas 3.5h)
-    o se juega y liquida dentro de las próximas `max_horas` (8.0 horas por defecto).
-    Prohíbe inmovilizar capital en partidos a 2 o 3 días vista.
+    REGLA DE ROTACIÓN RÁPIDA DE CAPITAL (PARTIDOS DE HOY):
+    Devuelve True si el partido está EN VIVO ahora mismo (últimas 3.5h)
+    o se juega y liquida en la jornada de hoy (hasta 14.0 horas de distancia).
+    Permite cubrir toda la tarde y noche (NBA, NCAA, fútbol nocturno) sin
+    inmovilizar capital en partidos a 2 o 3 días vista.
     """
     dt = parsear_datetime_utc(inicio_utc_str)
     if dt is None:

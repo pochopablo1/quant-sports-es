@@ -61,11 +61,12 @@ def _cargar_claves_ya_ejecutadas() -> set:
         return set()
 
 
-def _es_evento_en_vivo_o_liquida_hoy(inicio_utc_str: Any, max_horas: float = 8.0) -> bool:
+def _es_evento_en_vivo_o_liquida_hoy(inicio_utc_str: Any, max_horas: float = 14.0) -> bool:
     """
-    CANDADO DE VELOCIDAD DE CAPITAL (SOLO EN VIVO O LIQUIDACIÓN EN HORAS):
+    CANDADO DE VELOCIDAD DE CAPITAL (PARTIDOS DE HOY O EN VIVO):
     Solo permite operar partidos que estén EN VIVO ahora mismo (últimas 3.5h)
-    o que empiecen dentro de las próximas `max_horas` (8h).
+    o que empiecen dentro de la jornada de hoy (hasta 14h de distancia, cubriendo
+    tarde y noche sin congelar saldo para mañana ni fin de semana).
     """
     dt = parsear_datetime_utc(inicio_utc_str)
     if dt is None:
@@ -79,6 +80,7 @@ def ejecutar_oportunidades_surebets(
     arbs_maker_taker: List[Dict[str, Any]],
     pasillos_middles: List[Dict[str, Any]],
     cruces_inplay: List[Dict[str, Any]],
+    triangulos_1x2: List[Dict[str, Any]] = None,
     stake_por_pata_usd: float = 4.0,
     max_ejecuciones_ciclo: int = 3,
 ) -> List[Dict[str, Any]]:
@@ -90,13 +92,10 @@ def ejecutar_oportunidades_surebets(
     nuevas_ejecuciones: List[Dict[str, Any]] = []
 
     candidatas: List[Dict[str, Any]] = []
-    # REGLA ESTRICTA DE SUREBET PURA DE 2 PATAS:
-    # AMBAS PATAS (Pata 1 y Pata 2) deben pertenecer a las casas donde tenemos billetera y API activa:
-    #   - Polymarket + SX Bet (Surebet Cross-Exchange de 2 casas)
-    #   - Polymarket + Polymarket / SX Bet + SX Bet (Pasillo de Riesgo Cero / Arbitraje Interno)
-    casas_con_billetera = {"Polymarket", "SX Bet"}
+    # Casas donde tenemos billetera y balance activo
+    casas_con_billetera = {"Polymarket", "SX Bet", "Limitless"}
 
-    # 1. Prioridad 1: Surebets EN VIVO de 2 Patas (Polymarket <-> SX Bet)
+    # 1. Prioridad 1: Surebets EN VIVO de 2 Patas (Polymarket <-> SX Bet / Limitless)
     for ip in cruces_inplay:
         c1_casa = str(ip.get("Pata_1_Casa", ""))
         c2_casa = str(ip.get("Pata_2_Casa", ""))
@@ -123,9 +122,9 @@ def ejecutar_oportunidades_surebets(
                     "ROI_Esperado_Pct": max(roi_oc, roi_26),
                 })
 
-    # 2. Prioridad 2: Surebets Cross-Exchange del Día (Liquidan en horas: <= 8h)
+    # 2. Prioridad 2: Surebets Cross-Exchange del Día (Liquidan en horas: <= 14h)
     for sb in surebets_taker:
-        if not _es_evento_en_vivo_o_liquida_hoy(sb.get("Inicio_UTC")):
+        if not _es_evento_en_vivo_o_liquida_hoy(sb.get("Inicio_UTC"), max_horas=14.0):
             continue
         c1_casa = str(sb.get("Pata_1_Casa", ""))
         c2_casa = str(sb.get("Pata_2_Casa", ""))
@@ -152,9 +151,37 @@ def ejecutar_oportunidades_surebets(
                     "ROI_Esperado_Pct": max(roi_oc, roi_26),
                 })
 
-    # 3. Prioridad 3: Pasillos de Riesgo Cero EN VIVO o del Día (Liquidan en horas: <= 8h)
+    # 3. Prioridad 3: Maker-Taker Arbitraje del Día (Pata 1 Maker 0% Fee -> Pata 2 Taker FOK)
+    for mt in (arbs_maker_taker or []):
+        if not _es_evento_en_vivo_o_liquida_hoy(mt.get("Inicio_UTC"), max_horas=14.0):
+            continue
+        c1_casa = str(mt.get("Pata_1_Casa", ""))
+        c2_casa = str(mt.get("Pata_2_Casa", ""))
+        if c1_casa in casas_con_billetera and c2_casa in casas_con_billetera:
+            roi_mt = float(mt.get("ROI_Maker_Taker_Pct", -99.0))
+            if roi_mt >= 0.35:
+                candidatas.append({
+                    "Tipo_Estrategia": "MAKER_TAKER_2CASAS",
+                    "Evento": mt.get("Evento", ""),
+                    "Deporte": mt.get("Deporte", ""),
+                    "Inicio_UTC": mt.get("Inicio_UTC", ""),
+                    "Mercado": mt.get("Mercado", "Maker-Taker"),
+                    "Pata_1_Casa": c1_casa,
+                    "Pata_1_Seleccion": mt.get("Pata_1_Seleccion", ""),
+                    "Pata_1_Cuota": float(mt.get("Pata_1_Cuota_Bruta", 0.0)),
+                    "Pata_1_ID": mt.get("Pata_1_ID_Mercado", ""),
+                    "Pata_1_Idx": int(mt.get("Pata_1_Indice_Lado", 1)),
+                    "Pata_2_Casa": c2_casa,
+                    "Pata_2_Seleccion": mt.get("Pata_2_Seleccion", ""),
+                    "Pata_2_Cuota": float(mt.get("Pata_2_Cuota_Bruta", 0.0)),
+                    "Pata_2_ID": mt.get("Pata_2_ID_Mercado", ""),
+                    "Pata_2_Idx": int(mt.get("Pata_2_Indice_Lado", 2)),
+                    "ROI_Esperado_Pct": roi_mt,
+                })
+
+    # 4. Prioridad 4: Pasillos de Riesgo Cero EN VIVO o del Día (Liquidan en horas: <= 14h)
     for pas in pasillos_middles:
-        if not _es_evento_en_vivo_o_liquida_hoy(pas.get("Inicio_UTC")):
+        if not _es_evento_en_vivo_o_liquida_hoy(pas.get("Inicio_UTC"), max_horas=14.0):
             continue
         c1_casa = str(pas.get("Pata_1_Casa", ""))
         c2_casa = str(pas.get("Pata_2_Casa", ""))

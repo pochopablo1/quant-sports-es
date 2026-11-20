@@ -265,6 +265,7 @@ def iniciar_daemon_surebets(
                 arbs_maker_taker=arbs_maker_taker,
                 pasillos_middles=pasillos_middles,
                 cruces_inplay=cruces_inplay,
+                triangulos_1x2=res_motor_a,
                 stake_por_pata_usd=stake_por_pata_usd,
             )
 
