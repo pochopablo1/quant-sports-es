@@ -158,10 +158,11 @@ def leer_moneylines(tags: List[str]) -> List[Dict[str, Any]]:
     ahora = datetime.now(timezone.utc)
     mercados, vistos = [], set()
     for tag in tags:
+        desde = (ahora - timedelta(hours=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
         for pag in range(4):
             lote = get_json(URL_GAMMA_EVENTS, {
-                "active": "true", "closed": "false", "tag_slug": tag, "order": "startDate",
-                "ascending": "false", "limit": "100", "offset": str(pag * 100)}, timeout=15)
+                "closed": "false", "tag_slug": tag, "end_date_min": desde, "order": "endDate",
+                "ascending": "true", "limit": "50", "offset": str(pag * 50)}, timeout=30)
             if not isinstance(lote, list) or not lote:
                 break
             for ev in lote:
@@ -180,7 +181,7 @@ def leer_moneylines(tags: List[str]) -> List[Dict[str, Any]]:
                     vistos.add(m.get("id"))
                     mercados.append({"id": str(m.get("id")), "titulo": str(ev.get("title") or ""),
                                      "inicio": inicio, "outcomes": outs, "tokens": toks})
-            if len(lote) < 100:
+            if len(lote) < 50:
                 break
     return mercados
 

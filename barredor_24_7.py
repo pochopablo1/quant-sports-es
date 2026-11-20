@@ -151,13 +151,14 @@ def obtener_moneylines_polymarket(tags: List[str]) -> List[Dict[str, Any]]:
     mercados: List[Dict[str, Any]] = []
     vistos = set()
     for tag in tags:
+        desde = (ahora - timedelta(hours=32)).strftime("%Y-%m-%dT%H:%M:%SZ")
         for pag in range(5):
             params = {
-                "active": "true", "closed": "false", "tag_slug": tag,
-                "order": "startDate", "ascending": "false", "limit": "100", "offset": str(pag * 100),
+                "closed": "false", "tag_slug": tag, "end_date_min": desde,
+                "order": "endDate", "ascending": "true", "limit": "50", "offset": str(pag * 50),
             }
             try:
-                resp = requests.get(URL_GAMMA_EVENTS, params=params, headers=HEADERS, timeout=12)
+                resp = requests.get(URL_GAMMA_EVENTS, params=params, headers=HEADERS, timeout=30)
                 resp.raise_for_status()
                 lote = resp.json()
             except Exception as exc:
@@ -194,7 +195,7 @@ def obtener_moneylines_polymarket(tags: List[str]) -> List[Dict[str, Any]]:
                         "outcomes": outcomes,
                         "tokens": tokens,
                     })
-            if len(lote) < 100:
+            if len(lote) < 50:
                 break
     return mercados
 
