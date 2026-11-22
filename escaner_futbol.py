@@ -41,7 +41,8 @@ URL_BOOK = "https://clob.polymarket.com/book"
 HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 
 INTERVALO_SEG = 60
-MARGEN_MIN = 0.02          # 2% neto mínimo
+MARGEN_MIN = 0.005         # se anota desde 0.5% neto (casi-oportunidades)
+MARGEN_UTIL = 0.02         # 2% neto = oportunidad útil
 TASA_FEE = 0.05            # fee taker deportes ~ shares * 0.05 * p * (1 - p)
 FILTRO_PREVIO = 0.005      # pre-filtro barato con bestBid/bestAsk de gamma
 
@@ -162,7 +163,8 @@ def evaluar(p: Dict[str, Any]) -> List[Dict[str, Any]]:
     asks, bids = p["asks"], p["bids"]
     # Pre-filtro barato: solo leer libros si la suma parece no cerrar
     posible_si = all(a for a in asks) and sum(asks) < 1 - FILTRO_PREVIO
-    posible_no = all(b for b in bids) and sum(bids) > 1 + FILTRO_PREVIO
+    # un bid faltante cuenta como 0 (pasa en vivo con resultados casi muertos: justo donde hay oportunidades)
+    posible_no = sum(b or 0.0 for b in bids) > 1 + FILTRO_PREVIO
     for tipo, posible, tokens, paga in (("TODOS_SI", posible_si, p["tok_si"], 1.0),
                                         ("TODOS_NO", posible_no, p["tok_no"], 2.0)):
         if not posible:
@@ -185,13 +187,14 @@ def evaluar(p: Dict[str, Any]) -> List[Dict[str, Any]]:
 # ── Resumen ──────────────────────────────────────────────────────────────────
 def escribir_resumen(historial: Dict[str, Dict[str, Any]], inicio: datetime, escaneos: int, partidos_vistos: int) -> None:
     ops = sorted(historial.values(), key=lambda o: -o["max_ganancia"])
-    utiles = [o for o in ops if o["max_usd"] >= 5]
+    utiles = [o for o in ops if o["max_usd"] >= 5 and o["max_margen"] >= MARGEN_UTIL * 100]
+    buenas = [o for o in ops if o["max_margen"] >= MARGEN_UTIL * 100]
     lineas = [
         f"ESCÁNER DE FÚTBOL ({inicio:%d/%m %H:%M} -> {datetime.now(ART):%d/%m %H:%M} hora ARG)",
         "=" * 70,
         f"Escaneos: {escaneos} | partidos distintos revisados: {partidos_vistos}",
-        f"Oportunidades detectadas (margen neto >= {MARGEN_MIN*100:.0f}%): {len(ops)}",
-        f"  de esas, con >= $5 invertibles: {len(utiles)}",
+        f"Casi-oportunidades (margen neto >= {MARGEN_MIN*100:.1f}%): {len(ops)}",
+        f"Oportunidades útiles (>= {MARGEN_UTIL*100:.0f}%): {len(buenas)} | con >= $5 invertibles: {len(utiles)}",
         f"  en vivo: {sum(1 for o in ops if o['vivo'])} | pre-partido: {sum(1 for o in ops if not o['vivo'])}",
         f"Ganancia máxima sumando la mejor foto de cada una: ${sum(o['max_ganancia'] for o in ops):.2f}",
         "", "Detalle (ordenado por ganancia):",
