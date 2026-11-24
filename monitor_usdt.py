@@ -40,6 +40,7 @@ URL = f"https://criptoya.com/api/usdt/ars/{VOLUMEN_USDT}"
 # Exchanges con API pública de trading (órdenes por programa)
 CON_API = {"binance", "bybit", "bitsoalpha", "ripioexchange", "cryptomktpro", "mexc"}
 MAX_ANTIGUEDAD_SEG = 900     # ignorar cotizaciones viejas
+UMBRAL_VUELTA = 0.003        # 0.3%: margen mínimo para contar una vuelta
 
 COLUMNAS = ["Hora_ART", "Tipo", "Compra_en", "Precio_compra", "Vende_en", "Precio_venta",
             "Margen_inventario_pct", "Margen_con_transfer_pct"]
@@ -88,7 +89,33 @@ def mejor_cruce(precios: Dict[str, Tuple[float, float]], permitidos: Optional[se
     return mejor
 
 
-def escribir_resumen(hist: Dict[str, List[Dict[str, Any]]], inicio: datetime) -> None:
+def señales_pares(precios: Dict[str, Tuple[float, float]], señales: Dict[str, List[int]]) -> None:
+    """Por cada par de exchanges con API: +1 si conviene comprar en el 1ro y vender en el 2do,
+    -1 si conviene al revés, 0 si ninguno supera el umbral."""
+    api = sorted(k for k in precios if k in CON_API)
+    for i, a in enumerate(api):
+        for b in api[i + 1:]:
+            ab = precios[b][1] / precios[a][0] - 1
+            ba = precios[a][1] / precios[b][0] - 1
+            s = 1 if ab >= UMBRAL_VUELTA else (-1 if ba >= UMBRAL_VUELTA else 0)
+            señales.setdefault(f"{a} <-> {b}", []).append(s)
+
+
+def vueltas_sin_transferir(seq: List[int]) -> Tuple[int, int]:
+    """(oportunidades totales, cambios de sentido). Cada cambio de sentido = la plata vuelve sola."""
+    oportunidades = cambios = 0
+    previo = 0
+    for s in seq:
+        if s != 0:
+            if previo == 0 or s != previo:
+                oportunidades += 1
+                if previo != 0:
+                    cambios += 1
+            previo = s
+    return oportunidades, cambios
+
+
+def escribir_resumen(hist: Dict[str, List[Dict[str, Any]]], inicio: datetime, señales: Optional[Dict[str, List[int]]] = None) -> None:
     lineas = [f"MONITOR USDT/ARS ({inicio:%d/%m %H:%M} -> {datetime.now(ART):%d/%m %H:%M} hora ARG)",
               f"Volumen simulado: {VOLUMEN_USDT} USDT | costo de transferencia: {COSTO_TRANSFER_USDT} USDT", "=" * 70]
     for tipo, titulo in (("AUTOMATIZABLE", "Entre exchanges CON API (se puede automatizar)"),
@@ -123,6 +150,16 @@ def escribir_resumen(hist: Dict[str, List[Dict[str, Any]]], inicio: datetime) ->
     if auto:
         med = sorted(f["m"] for f in auto)[len(auto) // 2]
         lineas.append(f"  ~{VOLUMEN_USDT * med:.2f} USDT por vuelta")
+    if señales:
+        horas = max((datetime.now(ART) - inicio).total_seconds() / 3600, 1 / 12)
+        lineas += ["", f"Vueltas en AMBOS sentidos (margen >= {UMBRAL_VUELTA*100:.1f}%, la plata vuelve sola sin transferir):"]
+        filas = sorted(((par, *vueltas_sin_transferir(seq)) for par, seq in señales.items()), key=lambda x: -x[2])
+        for par, ops, cambios in filas[:8]:
+            if ops:
+                lineas.append(f"  {par}: {ops} oportunidades, {cambios} cambios de sentido "
+                              f"(~{cambios / horas * 24:.1f} vueltas sin transferir por día)")
+        if not any(f[1] for f in filas):
+            lineas.append("  ninguna todavía")
     RUTA_RESUMEN.write_text("\n".join(lineas) + "\n", encoding="utf-8")
 
 
@@ -138,10 +175,12 @@ def main() -> None:
             csv.writer(f).writerow(COLUMNAS)
 
     hist: Dict[str, List[Dict[str, Any]]] = {"AUTOMATIZABLE": [], "MANUAL": []}
+    señales: Dict[str, List[int]] = {}
     ultimo_resumen = 0.0
     while datetime.now(ART) < fin:
         t0 = time.time()
         precios = leer_precios()
+        señales_pares(precios, señales)
         hora = f"{datetime.now(ART):%Y-%m-%d %H:%M}"
         partes = []
         for tipo, permitidos in (("AUTOMATIZABLE", CON_API), ("MANUAL", None)):
@@ -156,10 +195,10 @@ def main() -> None:
             partes.append(f"{tipo}: {c['a']}->{c['b']} {c['m']*100:.2f}%")
         log(f"{len(precios)} exchanges | " + (" | ".join(partes) if partes else "sin datos"))
         if time.time() - ultimo_resumen > 3600:
-            escribir_resumen(hist, inicio)
+            escribir_resumen(hist, inicio, señales)
             ultimo_resumen = time.time()
         time.sleep(max(1.0, INTERVALO_SEG - (time.time() - t0)))
-    escribir_resumen(hist, inicio)
+    escribir_resumen(hist, inicio, señales)
     log("Terminado. Mirá usdt_resumen.txt")
     while True:
         time.sleep(3600)
