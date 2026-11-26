@@ -10,3 +10,6 @@ Cada entrada: fecha · experimento · qué se vio · decisión. La más nueva va
 
 ## 2026-11-26 03:38 UTC · exp001_clv_polymarket v1
 - Sin resultados nuevos (esperable: la primera corrida de PythonAnywhere es a las 06 UTC).
+
+## 2026-11-26 09:38 UTC · exp001_clv_polymarket v1
+- Sin resultados nuevos. Segunda entrada seguida sin datos y la corrida de las 06 UTC ya debería haber subido algo a `resultados/`: **ojo, PythonAnywhere puede estar caído** (tarea programada no activa, git pull/push sin credenciales, o el runner falló antes de subir). Revisar el log de la tarea en PythonAnywhere.
