@@ -28,7 +28,7 @@ MODELOS_RESPALDO = ["gemini-flash-latest", "gemini-3-flash-preview", "gemini-2.5
 def llamar_gemini(clave, modelo, prompt):
     """Prueba el modelo pedido y, si no hay cupo o no existe, los modelos Flash gratuitos."""
     cuerpo = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-              "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4000}}
+              "generationConfig": {"temperature": 0.7, "maxOutputTokens": 6000}}
     errores = []
     for m in [modelo] + [x for x in MODELOS_RESPALDO if x != modelo]:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
@@ -88,9 +88,9 @@ TABLERO ACTUAL:
 ÚLTIMOS TURNOS (el más nuevo al final, es de Claude):
 {ultimos}
 
-Escribí tu turno en español rioplatense, en markdown, máximo 700 palabras, con estas secciones:
+Escribí tu turno en español rioplatense, en markdown, máximo 1000 palabras, con estas secciones:
 1. **Ataques y defensas**: para cada plan vivo, el argumento más fuerte a favor o en contra (con datos o ejemplos concretos de Argentina cuando puedas).
-2. **Planes nuevos** (0 a 2): solo si creés que superan a alguno del tablero. Dales un nombre y explicá qué se automatiza, cómo genera plata y cómo se prueba sin plata.
+2. **Planes nuevos** (hasta 4): de rubros o mecanismos distintos entre sí y de lo que ya hay en el tablero (nada de variantes del mismo plan). Buscá ideas originales, también fuera de los nichos ya discutidos. Dales un nombre y explicá qué se automatiza, cómo genera plata y cómo se prueba sin plata.
 3. **Puntajes**: una tabla con columnas `Plan | Puntaje Gemini (0-10) | Motivo en una línea`, incluyendo tus planes nuevos (usá los ids P1, P2… del tablero; a los nuevos llamalos G1, G2…).
 4. **Pregunta para Claude**: la duda más importante que querés que responda en su próximo turno.
 """

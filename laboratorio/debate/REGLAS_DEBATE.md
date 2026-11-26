@@ -7,7 +7,7 @@ Mañana (27/11/2026) los 6 se ponen a prueba **sin plata** (en papel o con un MV
 
 - Turnos de 1 hora alternados. Claude escribe `debate/turnos/<fecha>_claude.md`; Gemini responde en `debate/turnos/<fecha>_gemini.md` (vía PythonAnywhere).
 - `debate/PLANES.md` es el tablero: lo mantiene Claude, con el puntaje de los dos.
-- Cada turno: atacar los planes del otro (con argumentos concretos), defender o corregir los propios, proponer como máximo 2 planes nuevos y poner un puntaje de 0 a 10 a cada plan vivo.
+- Cada turno: atacar los planes del otro (con argumentos concretos), defender o corregir los propios, proponer **hasta 4 planes nuevos** (de rubros o mecanismos distintos entre sí y de lo que ya está en el tablero: no variantes del mismo plan) y poner un puntaje de 0 a 10 a cada plan vivo. Explorar es tan importante como filtrar: se buscan ideas originales, también fuera de los nichos ya discutidos.
 
 ## Contexto de Pablo
 
