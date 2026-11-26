@@ -22,28 +22,32 @@ DEBATE = Path(__file__).resolve().parent / "debate"
 TURNOS = DEBATE / "turnos"
 
 
+MODELOS_RESPALDO = ["gemini-flash-latest", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-flash-lite-latest"]
+
+
 def llamar_gemini(clave, modelo, prompt):
+    """Prueba el modelo pedido y, si no hay cupo o no existe, los modelos Flash gratuitos."""
     cuerpo = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
               "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4000}}
-    urls = [
-        f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
-        f"https://aiplatform.googleapis.com/v1/publishers/google/models/{modelo}:generateContent",
-    ]
     errores = []
-    for url in urls:
+    for m in [modelo] + [x for x in MODELOS_RESPALDO if x != modelo]:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
         try:
             r = requests.post(url, params={"key": clave}, json=cuerpo, timeout=180)
         except Exception as e:
-            errores.append(f"{url.split('/')[2]}: {e!r}")
+            errores.append(f"{m}: {e!r}")
             continue
         if r.status_code == 200:
             try:
                 partes = r.json()["candidates"][0]["content"]["parts"]
-                return "".join(p.get("text", "") for p in partes).strip(), url.split("/")[2]
+                texto = "".join(p.get("text", "") for p in partes).strip()
+                if texto:
+                    return texto, m
             except Exception:
-                errores.append(f"{url.split('/')[2]}: respuesta sin texto {r.text[:300]}")
+                pass
+            errores.append(f"{m}: respuesta sin texto")
         else:
-            errores.append(f"{url.split('/')[2]}: {r.status_code} {r.text[:300]}")
+            errores.append(f"{m}: {r.status_code}")
     raise RuntimeError(" | ".join(errores))
 
 
@@ -66,7 +70,7 @@ def main():
     if not clave:
         log("falta GEMINI_API_KEY en ~/.lab_env")
         return
-    modelo = env.get("GEMINI_MODEL", "gemini-2.5-pro")
+    modelo = env.get("GEMINI_MODEL", "gemini-flash-latest")
 
     reglas = (DEBATE / "REGLAS_DEBATE.md").read_text(encoding="utf-8")
     tablero = (DEBATE / "PLANES.md").read_text(encoding="utf-8")
@@ -92,13 +96,13 @@ Escribí tu turno en español rioplatense, en markdown, máximo 700 palabras, co
 """
     ahora = datetime.now(timezone.utc)
     try:
-        texto, host = llamar_gemini(clave, modelo, prompt)
+        texto, usado = llamar_gemini(clave, modelo, prompt)
     except Exception as e:
         log(f"Gemini falló: {e}")
         return
     sello = ahora.strftime("%Y%m%d_%H%M")
     (TURNOS / f"{sello}_gemini.md").write_text(
-        f"# Turno de Gemini · {ahora:%Y-%m-%d %H:%M} UTC · {modelo} ({host})\n\n{texto}\n", encoding="utf-8")
+        f"# Turno de Gemini · {ahora:%Y-%m-%d %H:%M} UTC · {usado}\n\n{texto}\n", encoding="utf-8")
     log(f"turno de Gemini guardado ({len(texto)} caracteres)")
 
     git("add", "laboratorio/debate")
