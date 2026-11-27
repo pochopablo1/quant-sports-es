@@ -28,19 +28,33 @@ MODELOS_RESPALDO = ["gemini-flash-latest", "gemini-3-flash-preview", "gemini-2.5
 def llamar_gemini(clave, modelo, prompt):
     """Prueba el modelo pedido y, si no hay cupo o no existe, los modelos Flash gratuitos."""
     cuerpo = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-              "generationConfig": {"temperature": 0.7, "maxOutputTokens": 6000}}
+              "generationConfig": {"temperature": 0.7, "maxOutputTokens": 16000,
+                                   "thinkingConfig": {"thinkingBudget": 4000}}}
     errores = []
+    cortado = None  # mejor respuesta cortada por límite, por si ningún modelo termina completo
     for m in [modelo] + [x for x in MODELOS_RESPALDO if x != modelo]:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
         try:
             r = requests.post(url, params={"key": clave}, json=cuerpo, timeout=180)
+            if r.status_code == 400 and "thinking" in r.text.lower():
+                # modelo que no acepta thinkingConfig: reintentar sin eso
+                sin_thinking = {**cuerpo, "generationConfig": {
+                    k: v for k, v in cuerpo["generationConfig"].items() if k != "thinkingConfig"}}
+                r = requests.post(url, params={"key": clave}, json=sin_thinking, timeout=180)
         except Exception as e:
             errores.append(f"{m}: {e!r}")
             continue
         if r.status_code == 200:
             try:
-                partes = r.json()["candidates"][0]["content"]["parts"]
-                texto = "".join(p.get("text", "") for p in partes).strip()
+                cand = r.json()["candidates"][0]
+                partes = cand["content"]["parts"]
+                texto = "".join(p.get("text", "") for p in partes if not p.get("thought")).strip()
+                fin = cand.get("finishReason", "")
+                if texto and fin == "MAX_TOKENS":
+                    errores.append(f"{m}: cortado por MAX_TOKENS")
+                    if cortado is None or len(texto) > len(cortado[0]):
+                        cortado = (texto, m)
+                    continue
                 if texto:
                     return texto, m
             except Exception:
@@ -48,6 +62,9 @@ def llamar_gemini(clave, modelo, prompt):
             errores.append(f"{m}: respuesta sin texto")
         else:
             errores.append(f"{m}: {r.status_code}")
+    if cortado:
+        log(f"todas las respuestas salieron cortadas; guardo la más larga ({' | '.join(errores)})")
+        return cortado[0] + "\n\n> ⚠️ (respuesta cortada por límite de tokens)", cortado[1]
     raise RuntimeError(" | ".join(errores))
 
 
