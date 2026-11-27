@@ -1,0 +1,127 @@
+# Configuración de los 4 dry-runs (MODO LECTURA: ningún script firma, opera ni necesita fondos).
+# Copiá este archivo como config.yaml y completá lo marcado con COMPLETAR.
+# Regla del laboratorio: las direcciones de contratos salen SOLO de la documentación oficial
+# de cada protocolo y se verifican en el explorador (`python -m c1_rescate.dryrun --verificar`).
+
+# ───────────────────────── C14 · USDT/ARS entre exchanges ─────────────────────────
+c14:
+  horas: 72
+  intervalo_s: 30
+  tamanos_usdt: [20, 50, 80]
+  slippage_extra: 0.001         # 0,1% extra sobre el precio del libro
+  retiro_usdt: 0.01             # retiro de USDT por Polygon (evitar Tron: ~3 USDT)
+  fraccion_rebalanceo: 0.5      # qué parte de los ciclos necesita mover USDT
+  min_duracion_s: 60            # tiempo realista para mandar las dos órdenes por API
+  min_neto_pct: 0.004           # cruces netos ≥ 0,4%
+  # solo_exchanges: [binance, bitso, ripioexchange]   # opcional: limitar a estos
+  # Comisión taker de cada exchange (fracción) y si tiene API de trading.
+  # Los nombres son las claves de CriptoYa: corré `--probar` para ver cuáles aparecen.
+  exchanges:
+    binance:        {taker: 0.001,  api_trading: true}    # verificar tabla vigente del par USDT/ARS
+    bitso:          {taker: 0.006,  api_trading: true}    # tabla oficial ARS, tramo bajo: 0,60% taker / 0,45% maker
+    ripioexchange:  {taker: 0.0025, api_trading: true}    # Ripio Trade: dato de Gemini, VERIFICAR en su web
+  reporte:
+    meta_usd_dia: 2.0
+    min_share_direccion: 0.30
+    max_share_sin_api: 0.50
+    horas_minimas: 48
+
+# ───────────────────────── C15 · MEP entre bonos (IOL) ─────────────────────────
+# Usuario y clave de IOL: variables de entorno IOL_USUARIO e IOL_CLAVE (ver README).
+c15:
+  horas: 80                     # reloj corrido; solo consulta en horario de mercado
+  intervalo_s: 15               # 12 símbolos por pasada: no bajar mucho (límites de la API)
+  hora_desde: 11
+  hora_hasta: 17
+  mercado: bCBA
+  plazo: t0                     # contado inmediato
+  bonos: [AL30, GD30, AL35, GD35, AE38, GD38]
+  comision_por_pata: 0.0        # COMPLETAR con el tarifario real de tu broker para bonos
+  derechos_mercado: 0.0001      # VERIFICAR (dato aproximado)
+  iva: 0.21
+  compuerta_costo_ciclo: 0.004  # si las 4 patas cuestan > 0,4%, muere sin correr
+  tick_ars: 1.0                 # 1 tick de slippage por pata, en pesos por 100 VN (VERIFICAR)
+  tick_usd: 0.01
+  tam_max_usd: 100
+  min_profundidad_usd: 50
+  min_duracion_s: 30
+  min_neto_pct: 0.0025          # cruces netos ≥ 0,25%
+  reporte:
+    meta_usd_dia: 2.0
+    por_dia_habil: true
+    max_concentracion: 0.70
+    horas_minimas: 48
+
+# ───────────────────────── C8 · HyperCore vs HyperEVM ─────────────────────────
+c8:
+  horas: 72
+  intervalo_s: 10
+  rpc_hyperevm: https://rpc.hyperliquid.xyz/evm
+  fee_core_taker: 0.0007        # spot taker nivel base: VERIFICAR en la doc de Hyperliquid
+  tamanos_usd: [20, 50]
+  excluir_top: 5                # sacar los 5 tokens más líquidos
+  excluir: []
+  vol_min_usd: 5000
+  max_tokens: 15
+  gas_unidades: 350000
+  rebalanceo_usd: 0.05          # costo de mover inventario Core ↔ EVM
+  fraccion_rebalanceo: 0.5
+  min_duracion_s: 10
+  min_neto_pct: 0.004           # brechas netas ≥ 0,4%
+  dex:                          # DEX con interfaz Uniswap V3 en HyperEVM (ej.: HyperSwap V3)
+    factory: COMPLETAR          # de la documentación oficial del DEX
+    quoter: COMPLETAR           # QuoterV2 del mismo DEX
+    fees: [500, 3000, 10000]
+    tokens_quote:               # contra qué se cotiza en el AMM
+      - {nombre: WHYPE, tipo: hype, direccion: COMPLETAR}
+      # - {nombre: USDT0, tipo: usd, direccion: COMPLETAR}
+  reporte:
+    meta_usd_dia: 2.0
+    min_share_direccion: 0.30
+    max_concentracion: 0.50
+    horas_minimas: 48
+
+# ───────────────────────── C1 · Arbitraje de rescate ─────────────────────────
+c1:
+  horas: 72
+  intervalo_s: 4
+  tamanos_usd: [20, 50, 100]
+  min_duracion_s: 4             # ~2 bloques de Base/HyperEVM; subilo para Arbitrum si querés
+  min_neto_usd: 0.30
+  maker_rango_max: 0.99         # registra (solo informativo) cuando el stable toca ≤ 0,99
+  cadenas:
+    base:      {rpc: https://mainnet.base.org,        op_stack: true,  nativo: ETH}
+    arbitrum:  {rpc: https://arb1.arbitrum.io/rpc,    op_stack: false, nativo: ETH, multiplicador_gas: 1.5}
+    hyperevm:  {rpc: https://rpc.hyperliquid.xyz/evm, op_stack: false, nativo: HYPE}
+  # Recomendado: RPCs propios gratis (Alchemy, QuickNode) en vez de los públicos, por límites.
+  rutas:
+    - nombre: spark-psm-base      # control: muy competida, sirve para validar que el script lee bien
+      tipo: psm3
+      cadena: base
+      usd:   "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"   # USDC en Base (verificar)
+      token: "0x820C137fa70C8691f0e44Dc420a5e53c168921Dc"   # USDS en Base (verificar)
+      psm:   "0x1601843c5E9bC251A3272907010AFa41Fa18347E"   # Spark PSM3 en Base (verificar)
+      dex: {tipo: v3, quoter: "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", fee: 100}  # Uniswap QuoterV2 Base (verificar)
+      gas_unidades: 350000
+    - nombre: nerite-usnd-arb
+      tipo: liquity_v2
+      cadena: arbitrum
+      usd:   "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"   # USDC nativo en Arbitrum (verificar)
+      token: COMPLETAR                                       # USND (doc oficial de Nerite)
+      collateral_registry: COMPLETAR                         # CollateralRegistry de Nerite
+      costo_venta_garantia: 0.003
+      dex: {tipo: v3, quoter: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e", fee: 500}  # Uniswap QuoterV2 Arbitrum (verificar); cambiar si el pool está en otro DEX
+      gas_unidades: 900000
+    - nombre: felix-feusd-hyperevm
+      tipo: liquity_v2
+      cadena: hyperevm
+      usd:   COMPLETAR                                       # USDC o USDT0 en HyperEVM
+      token: COMPLETAR                                       # feUSD (doc oficial de Felix)
+      collateral_registry: COMPLETAR                         # CollateralRegistry de Felix (¡no la de UNI!)
+      costo_venta_garantia: 0.004                            # paga en HYPE/UBTC: venderlo cuesta
+      dex: {tipo: v3, quoter: COMPLETAR, fee: 500}
+      gas_unidades: 900000
+  reporte:
+    meta_usd_dia: 2.0
+    max_concentracion: 0.80
+    horas_minimas: 48
