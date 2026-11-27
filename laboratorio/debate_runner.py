@@ -5,7 +5,8 @@ git pull → si el último turno es de Claude, le pasa reglas + tablero + últim
 guarda la respuesta en debate/turnos/<fecha>_gemini.md → git push.
 
 Usa la misma configuración que lab_runner.py: ~/.lab_env con GEMINI_API_KEY (y GEMINI_MODEL opcional).
-Uso: python3 ~/laboratorio/laboratorio/debate_runner.py
+Uso: python3 ~/laboratorio/laboratorio/debate_runner.py            (debate V1, carpeta debate/)
+     python3 ~/laboratorio/laboratorio/debate_runner.py debate_v2  (debate V2, carpeta debate_v2/)
 """
 from __future__ import annotations
 
@@ -18,7 +19,8 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lab_runner import RAMA, git, leer_env, log  # noqa: E402
 
-DEBATE = Path(__file__).resolve().parent / "debate"
+CARPETA = sys.argv[1] if len(sys.argv) > 1 else "debate"
+DEBATE = Path(__file__).resolve().parent / CARPETA
 TURNOS = DEBATE / "turnos"
 
 
@@ -89,12 +91,28 @@ def main():
         return
     modelo = env.get("GEMINI_MODEL", "gemini-flash-latest")
 
-    reglas = (DEBATE / "REGLAS_DEBATE.md").read_text(encoding="utf-8")
+    archivo_reglas = sorted(DEBATE.glob("REGLAS_DEBATE*.md"))[0]
+    reglas = archivo_reglas.read_text(encoding="utf-8")
     tablero = (DEBATE / "PLANES.md").read_text(encoding="utf-8")
     ultimos = "\n\n---\n\n".join(t.read_text(encoding="utf-8") for t in turnos[-4:])
-    prompt = f"""Sos Gemini y debatís con Claude para encontrarle a Pablo los mejores planes del mundo
+    if CARPETA == "debate":
+        intro = """Sos Gemini y debatís con Claude para encontrarle a Pablo los mejores planes del mundo
 para automatizar algo que genere plata. Sé exigente y concreto: tu trabajo es que solo sobrevivan los
-planes realmente buenos, pero también proponer mejores. Nada de elogios vacíos.
+planes realmente buenos, pero también proponer mejores. Nada de elogios vacíos."""
+        secciones = """1. **Ataques y defensas**: para cada plan vivo, el argumento más fuerte a favor o en contra (con datos o ejemplos concretos de Argentina cuando puedas).
+2. **Planes nuevos** (hasta 4): de rubros o mecanismos distintos entre sí y de lo que ya hay en el tablero (nada de variantes del mismo plan). Buscá ideas originales, también fuera de los nichos ya discutidos. Dales un nombre y explicá qué se automatiza, cómo genera plata y cómo se prueba sin plata.
+3. **Puntajes**: una tabla con columnas `Plan | Puntaje Gemini (0-10) | Motivo en una línea`, incluyendo tus planes nuevos (usá los ids P1, P2… del tablero; a los nuevos llamalos G1, G2…).
+4. **Pregunta para Claude**: la duda más importante que querés que responda en su próximo turno."""
+    else:
+        intro = """Sos Gemini y debatís con Claude (Debate V2) para encontrarle a Pablo estrategias 100% autónomas
+(código + APIs / on-chain, cero ventas humanas) que den ≥ US$2/día netos con US$300 de banca. Sé exigente y
+concreto: ataques duros con datos verificables (fees, APIs, liquidez, bans, legalidad desde Argentina) y
+propuestas nuevas que respeten el patrón de las reglas. Nada de elogios vacíos."""
+        secciones = """1. **Ataque duro**: para cada estrategia viva, el argumento más fuerte en contra o a favor (fees ocultos, iliquidez, inventario, APIs cerradas, ban, legalidad), respondiendo a los ataques de Claude.
+2. **Propuestas nuevas** (hasta 4): mecanismos distintos entre sí y de lo que ya hay en el tablero, con el filtro anti-ballenas explicado y el dry-run con umbral numérico.
+3. **Puntajes**: una tabla con columnas `Estrategia | Puntaje Gemini (0-10) | Motivo en una línea`, incluyendo tus propuestas nuevas (usá los ids del tablero; a las nuevas llamalas G1, G2…, siguiendo la numeración que ya exista).
+4. **Pregunta para Claude**: la duda más importante que querés que responda en su próximo turno."""
+    prompt = f"""{intro}
 
 REGLAS DEL DEBATE:
 {reglas}
@@ -106,10 +124,7 @@ TABLERO ACTUAL:
 {ultimos}
 
 Escribí tu turno en español rioplatense, en markdown, máximo 1000 palabras, con estas secciones:
-1. **Ataques y defensas**: para cada plan vivo, el argumento más fuerte a favor o en contra (con datos o ejemplos concretos de Argentina cuando puedas).
-2. **Planes nuevos** (hasta 4): de rubros o mecanismos distintos entre sí y de lo que ya hay en el tablero (nada de variantes del mismo plan). Buscá ideas originales, también fuera de los nichos ya discutidos. Dales un nombre y explicá qué se automatiza, cómo genera plata y cómo se prueba sin plata.
-3. **Puntajes**: una tabla con columnas `Plan | Puntaje Gemini (0-10) | Motivo en una línea`, incluyendo tus planes nuevos (usá los ids P1, P2… del tablero; a los nuevos llamalos G1, G2…).
-4. **Pregunta para Claude**: la duda más importante que querés que responda en su próximo turno.
+{secciones}
 """
     ahora = datetime.now(timezone.utc)
     try:
@@ -122,9 +137,9 @@ Escribí tu turno en español rioplatense, en markdown, máximo 1000 palabras, c
         f"# Turno de Gemini · {ahora:%Y-%m-%d %H:%M} UTC · {usado}\n\n{texto}\n", encoding="utf-8")
     log(f"turno de Gemini guardado ({len(texto)} caracteres)")
 
-    git("add", "laboratorio/debate")
+    git("add", f"laboratorio/{CARPETA}")
     git("-c", "user.name=Gemini via PA", "-c", "user.email=lab@pythonanywhere",
-        "commit", "-m", f"debate: turno de Gemini {sello}")
+        "commit", "-m", f"{CARPETA}: turno de Gemini {sello}")
     for intento in range(3):
         try:
             git("pull", "--rebase", "origin", RAMA)
