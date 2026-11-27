@@ -52,6 +52,7 @@ class Parada:
         self.fin = time.time() + horas * 3600
         self.pedida = False
         signal.signal(signal.SIGINT, self._pedir)
+        signal.signal(signal.SIGTERM, self._pedir)
 
     def _pedir(self, *_):
         log.info("Ctrl+C recibido: cierro prolijo y guardo lo abierto…")

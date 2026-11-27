@@ -8,6 +8,7 @@ Uso (desde la carpeta bots_v2):
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import time
 
@@ -17,7 +18,7 @@ from comun.utiles import Parada, cargar_config, configurar_log, dormir_hasta, lo
 from c14_usdt_ars.logica import cruces
 
 URL_CRIPTOYA = "https://criptoya.com/api/usdt/ars/{monto}"
-URL_BINANCE = "https://api.binance.com/api/v3/depth?symbol=USDTARS&limit=50"
+URL_BINANCE = os.environ.get("BINANCE_BASE", "https://api.binance.com") + "/api/v3/depth?symbol=USDTARS&limit=50"
 URL_BITSO_LIBROS = "https://api.bitso.com/v3/available_books/"
 URL_BITSO = "https://api.bitso.com/v3/order_book/?book=usdt_ars&aggregate=true"
 
