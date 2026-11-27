@@ -1,0 +1,102 @@
+# Dry-runs de las finalistas del Debate V2 (MODO LECTURA: no firma, no opera, no usa fondos).
+# Código: rama `laboratorio` (laboratorio/bots_v2). Datos y reportes: rama `dryrun-datos`.
+name: Dry-runs V2
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"   # cada 6 h; cada corrida dura ~5 h 45 min
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: dryruns-v2
+  cancel-in-progress: false
+
+env:
+  FIN_UTC: "2026-11-30T21:00:00Z"   # ~72 h; después no corre más
+  BINANCE_BASE: "https://data-api.binance.vision"   # api.binance.com bloquea IPs de EE. UU.
+  PYTHONUTF8: "1"
+
+jobs:
+  correr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - name: ¿Sigue la ventana de 72 h?
+        id: ventana
+        run: |
+          if [ "$(date -u +%s)" -gt "$(date -u -d "$FIN_UTC" +%s)" ]; then echo "seguir=no" >> "$GITHUB_OUTPUT"; else echo "seguir=si" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.ventana.outputs.seguir == 'si'
+        with: {ref: laboratorio, path: repo}
+
+      - name: Traer datos anteriores
+        if: steps.ventana.outputs.seguir == 'si'
+        run: |
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          if git clone -q -b dryrun-datos "$URL" datos-rama; then echo "rama de datos existente"; else
+            mkdir datos-rama && cd datos-rama && git init -q -b dryrun-datos && git remote add origin "$URL"; fi
+          mkdir -p repo/laboratorio/bots_v2/datos
+          cp -r "$GITHUB_WORKSPACE"/datos-rama/datos/. repo/laboratorio/bots_v2/datos/ 2>/dev/null || true
+
+      - uses: actions/setup-python@v5
+        if: steps.ventana.outputs.seguir == 'si'
+        with: {python-version: "3.11"}
+
+      - name: Instalar
+        if: steps.ventana.outputs.seguir == 'si'
+        working-directory: repo/laboratorio/bots_v2
+        run: |
+          pip install -q -r requirements.txt
+          cp config.ci.yaml config.yaml
+          python -m pytest -q
+
+      - name: Chequeo rápido (una pasada de cada uno)
+        if: steps.ventana.outputs.seguir == 'si'
+        working-directory: repo/laboratorio/bots_v2
+        continue-on-error: true
+        run: |
+          mkdir -p datos
+          {
+            echo "## $(date -u '+%Y-%m-%d %H:%M') UTC"
+            for m in c14_usdt_ars c8_hypercore_evm c1_rescate; do
+              echo "### $m --probar"; timeout 240 python -m $m.dryrun --probar 2>&1 | tail -60
+            done
+            echo "### c1 --verificar"; timeout 180 python -m c1_rescate.dryrun --verificar 2>&1 | tail -40
+          } > datos/chequeo_ultimo.md 2>&1
+          cat datos/chequeo_ultimo.md
+
+      - name: Correr dry-runs (~5 h 45 min)
+        if: steps.ventana.outputs.seguir == 'si'
+        working-directory: repo/laboratorio/bots_v2
+        run: |
+          python -m c14_usdt_ars.dryrun > datos/run_c14.out 2>&1 &
+          python -m c8_hypercore_evm.dryrun > datos/run_c8.out 2>&1 &
+          python -m c1_rescate.dryrun > datos/run_c1.out 2>&1 &
+          wait || true
+          tail -5 datos/run_c14.out datos/run_c8.out datos/run_c1.out
+
+      - name: Reportes y guardar datos
+        if: always() && steps.ventana.outputs.seguir == 'si'
+        run: |
+          cd repo/laboratorio/bots_v2
+          for e in c14 c8 c1; do python reporte.py $e > datos/reporte_$e.md 2>&1 || true; done
+          cd "$GITHUB_WORKSPACE/datos-rama"
+          rm -rf datos && cp -r "$GITHUB_WORKSPACE"/repo/laboratorio/bots_v2/datos datos
+          {
+            echo "# Dry-runs V2 · último reporte"; echo
+            echo "Actualizado: $(date -u '+%Y-%m-%d %H:%M') UTC · fin de la ventana: $FIN_UTC"
+            for e in c14 c8 c1; do echo; echo "---"; echo; cat datos/reporte_$e.md; done
+          } > README.md
+          git add -A
+          git -c user.name="Dry-runs V2" -c user.email="actions@github.com" commit -qm "dry-runs: datos $(date -u '+%Y-%m-%d %H:%M')" || exit 0
+          git push -q origin HEAD:dryrun-datos
+
+      - name: Encadenar la próxima corrida
+        if: success() && steps.ventana.outputs.seguir == 'si'
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: gh workflow run dryruns_v2.yml --ref main -R "${{ github.repository }}" || true
