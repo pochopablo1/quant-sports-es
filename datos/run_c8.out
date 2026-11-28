@@ -1,0 +1,6 @@
+2026-11-27 18:44:50,283 INFO Universo: 0 pares token×pool (sin los 5 tokens más líquidos).
+2026-11-27 18:44:50,599 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-27 20:38:54,226 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-27 20:45:36,091 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-27 20:45:46,094 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 00:29:50,413 INFO C8 terminado. Reporte: python reporte.py c8
