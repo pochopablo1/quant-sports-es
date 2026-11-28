@@ -84,6 +84,9 @@ c8:
     - nombre: WHYPE
       tipo: hype
       direccion: '0x5555555555555555555555555555555555555555'
+    - nombre: USDT0
+      tipo: usd
+      direccion: '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb'
   reporte:
     meta_usd_dia: 2.0
     min_share_direccion: 0.3

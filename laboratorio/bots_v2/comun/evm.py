@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from web3 import Web3
 
@@ -45,6 +46,19 @@ ABI_GAS_PRICE_ORACLE = [{
 CERO = "0x0000000000000000000000000000000000000000"
 
 
+def con_reintentos(fn, intentos: int = 5, espera: float = 1.5):
+    """Reintenta llamadas RPC cuando el nodo público corta por límite de pedidos (-32005 / 429)."""
+    for i in range(intentos):
+        try:
+            return fn()
+        except Exception as e:
+            txt = str(e).lower()
+            if i < intentos - 1 and ("rate limit" in txt or "-32005" in txt or "429" in txt or "too many" in txt):
+                time.sleep(espera * (2 ** i))
+                continue
+            raise
+
+
 def es_direccion(x) -> bool:
     return isinstance(x, str) and Web3.is_address(x) and x.lower() != CERO
 
@@ -79,9 +93,9 @@ class Cadena:
         try:
             d_in, d_out = self.decimales(token_in), self.decimales(token_out)
             crudo = int(monto_in * 10 ** d_in)
-            res = self.c(quoter, ABI_QUOTER_V2).functions.quoteExactInputSingle(
+            res = con_reintentos(lambda: self.c(quoter, ABI_QUOTER_V2).functions.quoteExactInputSingle(
                 (Web3.to_checksum_address(token_in), Web3.to_checksum_address(token_out), crudo, fee, 0)
-            ).call()
+            ).call())
             return res[0] / 10 ** d_out
         except Exception as e:  # pool inexistente, sin liquidez, RPC caído
             log.debug("cotizar_v3 falló %s→%s: %s", token_in, token_out, e)
@@ -97,8 +111,8 @@ class Cadena:
 
     def pool_v3(self, factory: str, a: str, b: str, fee: int) -> str | None:
         try:
-            p = self.c(factory, ABI_FACTORY_V3).functions.getPool(
-                Web3.to_checksum_address(a), Web3.to_checksum_address(b), fee).call()
+            p = con_reintentos(lambda: self.c(factory, ABI_FACTORY_V3).functions.getPool(
+                Web3.to_checksum_address(a), Web3.to_checksum_address(b), fee).call())
             return p if es_direccion(p) else None
         except Exception:
             return None

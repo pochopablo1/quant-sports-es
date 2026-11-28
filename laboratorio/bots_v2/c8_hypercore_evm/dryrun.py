@@ -54,6 +54,7 @@ def universo(s, cfg, cadena: Cadena) -> list[dict]:
             for fee in dex["fees"]:
                 pool = cadena.pool_v3(dex["factory"], p["evm"], quote_evm["direccion"], fee) \
                     if es_direccion(dex.get("factory")) else None
+                time.sleep(0.25)  # el RPC público de HyperEVM limita los pedidos
                 if pool:
                     elegidos.append(dict(p, pool=pool, fee=fee, quote=quote_evm))
     return elegidos
@@ -106,6 +107,8 @@ def main():
             return
     pares = universo(s, cfg, cadena)
     log.info("Universo: %d pares token×pool (sin los %d tokens más líquidos).", len(pares), cfg["excluir_top"])
+    for p in pares:
+        log.info("  %s coin=%s pool=%s fee=%s quote=%s", p["token"], p["coin"], p["pool"], p["fee"], p["quote"]["nombre"])
     if args.descubrir:
         for p in pares:
             print(f"{p['token']:<10} coin={p['coin']:<8} vol24h=US${p['vol_usd']:>12,.0f} "
@@ -137,7 +140,7 @@ def main():
     ultimo_universo = time.time()
     while parada.seguir():
         t0 = time.time()
-        if t0 - ultimo_universo > 3600:  # refresca el universo cada hora
+        if t0 - ultimo_universo > (600 if not pares else 3600):  # cada hora (cada 10 min si quedó vacío)
             try:
                 pares = universo(s, cfg, cadena)
                 ultimo_universo = t0
