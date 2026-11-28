@@ -78,7 +78,7 @@ jobs:
           python -m c8_hypercore_evm.dryrun > datos/run_c8.out 2>&1 &
           python -m c1_rescate.dryrun > datos/run_c1.out 2>&1 &
           wait || true
-          tail -5 datos/run_c14.out datos/run_c8.out datos/run_c1.out
+          tail -n 5 datos/run_c14.out datos/run_c8.out datos/run_c1.out || true
 
       - name: Reportes y guardar datos
         if: always() && steps.ventana.outputs.seguir == 'si'
@@ -97,6 +97,6 @@ jobs:
           git push -q origin HEAD:dryrun-datos
 
       - name: Encadenar la próxima corrida
-        if: success() && steps.ventana.outputs.seguir == 'si'
+        if: always() && steps.ventana.outputs.seguir == 'si' && !cancelled()
         env: {GH_TOKEN: "${{ github.token }}"}
         run: gh workflow run dryruns_v2.yml --ref main -R "${{ github.repository }}" || true
