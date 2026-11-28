@@ -48,7 +48,9 @@ def precios_nativos(s) -> dict:
 def cotizar(cadena: Cadena, ruta: dict, token_in: str, token_out: str, monto: float) -> float | None:
     dex = ruta["dex"]
     if dex["tipo"] == "v3":
-        return cadena.cotizar_v3(dex["quoter"], token_in, token_out, monto, dex["fee"])
+        fees = dex["fee"] if isinstance(dex["fee"], list) else [dex["fee"]]
+        outs = [o for o in (cadena.cotizar_v3(dex["quoter"], token_in, token_out, monto, f) for f in fees) if o]
+        return max(outs) if outs else None
     if dex["tipo"] == "curve":
         i, j = (dex["i"], dex["j"]) if token_in.lower() == ruta["usd"].lower() else (dex["j"], dex["i"])
         return cadena.cotizar_curve(dex["pool"], i, j, monto, cadena.decimales(token_in), cadena.decimales(token_out))

@@ -1,5 +1,5 @@
 # Config para GitHub Actions (generada por Claude). Corridas de 5,75 h encadenadas cada 6 h.
-# Fuentes: Uniswap v3 HyperEVM (developers.uniswap.org), Felix (usefelix.gitbook.io). Nerite desactivado.
+# Fuentes: Uniswap v3 HyperEVM (developers.uniswap.org), HyperSwap V3 (hyperevmscan), Felix (usefelix.gitbook.io). Nerite desactivado.
 c14:
   horas: 5.75
   intervalo_s: 30
@@ -77,6 +77,7 @@ c8:
     factory: '0xf0db7b58379503491d857dB50AC9ece64c653918'
     quoter: '0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468'
     fees:
+    - 100
     - 500
     - 3000
     - 10000
@@ -92,6 +93,13 @@ c8:
     min_share_direccion: 0.3
     max_concentracion: 0.5
     horas_minimas: 48
+  dexes:
+  - nombre: hyperswap-v3
+    factory: '0xB1c0fa0B789320044A6F623cFe5eBda9562602E3'
+    quoter: '0x03A918028f22D9E1473B7959C927AD7425A45C7C'
+  - nombre: uniswap-v3
+    factory: '0xf0db7b58379503491d857dB50AC9ece64c653918'
+    quoter: '0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468'
 c1:
   horas: 5.75
   intervalo_s: 4
@@ -150,8 +158,10 @@ c1:
     costo_venta_garantia: 0.004
     dex:
       tipo: v3
-      quoter: '0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468'
-      fee: 100
+      quoter: '0x03A918028f22D9E1473B7959C927AD7425A45C7C'
+      fee:
+      - 100
+      - 500
     gas_unidades: 900000
   reporte:
     meta_usd_dia: 2.0

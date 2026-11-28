@@ -45,19 +45,33 @@ def universo(s, cfg, cadena: Cadena) -> list[dict]:
         pares.append({"token": base["name"], "coin": coin, "evm": evm["address"],
                       "vol_usd": vol[base["name"]]})
     fuera = excluir_top(vol, cfg["excluir_top"]) | set(cfg.get("excluir", []))
+    n_usdc, n_evm = len(vol), len(pares)
     pares = [p for p in pares if p["token"] not in fuera and p["vol_usd"] >= cfg["vol_min_usd"]]
     pares = sorted(pares, key=lambda p: -p["vol_usd"])[:cfg["max_tokens"]]
-    dex = cfg["dex"]
+    log.info("Universo: %d pares spot/USDC, %d con contrato en HyperEVM, %d tras filtros de volumen.",
+             n_usdc, n_evm, len(pares))
     elegidos = []
-    for p in pares:
-        for quote_evm in dex["tokens_quote"]:
-            for fee in dex["fees"]:
-                pool = cadena.pool_v3(dex["factory"], p["evm"], quote_evm["direccion"], fee) \
-                    if es_direccion(dex.get("factory")) else None
-                time.sleep(0.25)  # el RPC público de HyperEVM limita los pedidos
-                if pool:
-                    elegidos.append(dict(p, pool=pool, fee=fee, quote=quote_evm))
+    for dex in dexes(cfg):
+        if not es_direccion(dex.get("factory")):
+            continue
+        n_dex = 0
+        for p in pares:
+            for quote_evm in dex["tokens_quote"]:
+                for fee in dex["fees"]:
+                    pool = cadena.pool_v3(dex["factory"], p["evm"], quote_evm["direccion"], fee)
+                    time.sleep(0.25)  # el RPC público de HyperEVM limita los pedidos
+                    if pool:
+                        elegidos.append(dict(p, pool=pool, fee=fee, quote=quote_evm, dex=dex))
+                        n_dex += 1
+        log.info("  %s: %d pools encontrados.", dex.get("nombre", "dex"), n_dex)
     return elegidos
+
+
+def dexes(cfg) -> list[dict]:
+    """Lista de DEX v3 a usar: `dexes` (varios) o `dex` (uno, formato viejo)."""
+    lista = cfg.get("dexes") or [dict(cfg["dex"], nombre=cfg["dex"].get("nombre", "dex"))]
+    return [dict(d, tokens_quote=d.get("tokens_quote") or cfg["dex"]["tokens_quote"],
+                 fees=d.get("fees") or cfg["dex"]["fees"]) for d in lista]
 
 
 def evaluar(s, cfg, cadena: Cadena, par: dict, precio_hype: float, gas_usd: float) -> list[dict]:
@@ -67,7 +81,7 @@ def evaluar(s, cfg, cadena: Cadena, par: dict, precio_hype: float, gas_usd: floa
         return []
     q = par["quote"]
     usd_por_quote = precio_hype if q["tipo"] == "hype" else 1.0
-    quoter, fee = cfg["dex"]["quoter"], par["fee"]
+    quoter, fee = par["dex"]["quoter"], par["fee"]
 
     def venta_evm(tokens):
         out = cadena.cotizar_v3(quoter, par["evm"], q["direccion"], tokens, fee)
@@ -84,7 +98,7 @@ def evaluar(s, cfg, cadena: Cadena, par: dict, precio_hype: float, gas_usd: floa
                 continue
             n, pct = neto(r["bruto_usd"], tam, gas_usd, cfg["rebalanceo_usd"] * cfg["fraccion_rebalanceo"])
             if n > 0:
-                res.append({"clave": f"{par['token']}:{direccion}:{fee}", "grupo": par["token"],
+                res.append({"clave": f"{par['token']}:{par['dex'].get('nombre', 'dex')}:{direccion}:{fee}", "grupo": par["token"],
                             "direccion": direccion, "con_api": True, "tam_usd": tam,
                             "neto_usd": n, "neto_pct": pct,
                             "detalle": {k: round(v, 6) for k, v in r.items()}})
@@ -100,19 +114,21 @@ def main():
     cfg = cargar_config()["c8"]
     s = sesion_http()
     cadena = Cadena("hyperevm", cfg["rpc_hyperevm"])
-    for k in ("factory", "quoter"):
-        if not es_direccion(cfg["dex"].get(k)) or not cadena.tiene_codigo(cfg["dex"][k]):
-            log.error("c8.dex.%s no es un contrato válido en HyperEVM: completalo en config.yaml "
-                      "con la dirección de la documentación oficial del DEX.", k)
-            return
+    for d in dexes(cfg):
+        for k in ("factory", "quoter"):
+            if not es_direccion(d.get(k)) or not cadena.tiene_codigo(d[k]):
+                log.error("c8: %s.%s no es un contrato válido en HyperEVM: completalo en config.yaml "
+                          "con la dirección de la documentación oficial del DEX.", d.get("nombre", "dex"), k)
+                return
     pares = universo(s, cfg, cadena)
     log.info("Universo: %d pares token×pool (sin los %d tokens más líquidos).", len(pares), cfg["excluir_top"])
     for p in pares:
-        log.info("  %s coin=%s pool=%s fee=%s quote=%s", p["token"], p["coin"], p["pool"], p["fee"], p["quote"]["nombre"])
+        log.info("  %s coin=%s %s pool=%s fee=%s quote=%s", p["token"], p["coin"], p["dex"].get("nombre"),
+                 p["pool"], p["fee"], p["quote"]["nombre"])
     if args.descubrir:
         for p in pares:
             print(f"{p['token']:<10} coin={p['coin']:<8} vol24h=US${p['vol_usd']:>12,.0f} "
-                  f"pool={p['pool']} fee={p['fee']} quote={p['quote']['nombre']}")
+                  f"{p['dex'].get('nombre')} pool={p['pool']} fee={p['fee']} quote={p['quote']['nombre']}")
         return
 
     def pasada():
