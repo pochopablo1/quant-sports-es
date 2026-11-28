@@ -1,25 +1,25 @@
-## 2026-11-27 18:43 UTC
+## 2026-11-28 00:47 UTC
 ### c14_usdt_ars --probar
-2026-11-27 18:43:56,796 INFO Bitso con libro usdt_ars por API: sí
+2026-11-28 00:47:11,453 INFO Bitso con libro usdt_ars por API: sí
 Exchanges leídos: astropay, belo, binance, binancep2p, bingxp2p, bitgetp2p, bitso, bitsoalpha, bybit, bybitp2p, cocoscrypto, cryptomktpro, decrypto, eldoradop2p, fiwind, huobip2p, kucoinp2p, lemoncash, lemoncashp2p, letsbit, mexc, mexcp2p, nexo, okexp2p, peanut, ripio, ripioexchange, saldo, satoshitango, takenos, tiendacrypto, universalcoins, vitawallet, wallbit, weexp2p
 Con API de trading según config: binance, bitso, ripioexchange
 Faltan en config (se toman con taker 1% y sin API): astropay, belo, binancep2p, bingxp2p, bitgetp2p, bitsoalpha, bybit, bybitp2p, cocoscrypto, cryptomktpro, decrypto, eldoradop2p, fiwind, huobip2p, kucoinp2p, lemoncash, lemoncashp2p, letsbit, mexc, mexcp2p, nexo, okexp2p, peanut, ripio, saldo, satoshitango, takenos, tiendacrypto, universalcoins, vitawallet, wallbit, weexp2p
-Cruces con neto > 0 ahora: 40. Mejores:
-  mexc->binance                       neto  1.850%  US$0.364  API=False
-  mexc->binance                       neto  1.845%  US$0.907  API=False
-  mexc->binance                       neto  1.844%  US$1.450  API=False
-  mexc->ripioexchange                 neto  1.105%  US$0.869  API=False
-  mexc->ripioexchange                 neto  1.104%  US$0.543  API=False
-  mexc->ripioexchange                 neto  1.099%  US$0.216  API=False
-  mexc->bitso                         neto  1.087%  US$0.855  API=False
-  mexc->bitso                         neto  1.086%  US$0.534  API=False
-  mexc->bitso                         neto  1.081%  US$0.213  API=False
-  mexc->bybitp2p                      neto  1.059%  US$0.833  API=False
+Cruces con neto > 0 ahora: 20. Mejores:
+  mexc->binance                       neto  1.737%  US$0.342  API=False
+  mexc->binance                       neto  1.713%  US$0.844  API=False
+  mexc->binance                       neto  1.702%  US$1.341  API=False
+  mexc->bybitp2p                      neto  1.114%  US$0.219  API=False
+  mexc->bybitp2p                      neto  1.091%  US$0.537  API=False
+  mexc->bybitp2p                      neto  1.080%  US$0.851  API=False
+  mexc->ripioexchange                 neto  0.998%  US$0.197  API=False
+  mexc->ripioexchange                 neto  0.975%  US$0.480  API=False
+  mexc->ripioexchange                 neto  0.963%  US$0.759  API=False
+  mexc->bybit                         neto  0.870%  US$0.171  API=False
 ### c8_hypercore_evm --probar
-2026-11-27 18:44:22,164 INFO Universo: 0 pares token×pool (sin los 5 tokens más líquidos).
+2026-11-28 00:48:07,222 INFO Universo: 0 pares token×pool (sin los 5 tokens más líquidos).
 Gas por arbitraje ≈ US$0.0022. Brechas netas > 0: 0
 ### c1_rescate --probar
-2026-11-27 18:44:23,160 INFO Rutas activas: spark-psm-base, felix-feusd-hyperevm
+2026-11-28 00:48:08,017 INFO Rutas activas: spark-psm-base, felix-feusd-hyperevm
 Oportunidades netas > 0: 0
 Toques del rango maker: ninguno
 ### c1 --verificar

@@ -5,3 +5,17 @@
 2026-11-27 20:45:36,091 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
 2026-11-27 20:45:46,094 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
 2026-11-28 00:29:50,413 INFO C8 terminado. Reporte: python reporte.py c8
+2026-11-28 00:48:07,222 INFO Universo: 0 pares token×pool (sin los 5 tokens más líquidos).
+2026-11-28 00:49:32,395 INFO Universo: 0 pares token×pool (sin los 5 tokens más líquidos).
+2026-11-28 00:49:32,600 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 01:10:44,508 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 04:02:50,160 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 04:12:46,878 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 04:12:57,012 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 04:22:47,167 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 04:42:50,380 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 05:02:48,867 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 05:02:58,869 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 05:12:41,306 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 05:12:51,118 WARNING Pasada fallida: {'code': -32005, 'message': 'rate limited'}
+2026-11-28 06:34:32,767 INFO C8 terminado. Reporte: python reporte.py c8

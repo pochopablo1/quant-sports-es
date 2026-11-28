@@ -1,3 +1,3 @@
-2026-11-27 18:44:31,903 INFO Bitso con libro usdt_ars por API: sí
-2026-11-27 18:44:31,909 INFO C14 arrancó: 5.75 hs, cada 30 s. Ctrl+C para cortar.
-2026-11-28 00:29:31,995 INFO C14 terminado. Reporte: python reporte.py c14
+2026-11-28 00:48:16,191 INFO Bitso con libro usdt_ars por API: sí
+2026-11-28 00:48:16,191 INFO C14 arrancó: 5.75 hs, cada 30 s. Ctrl+C para cortar.
+2026-11-28 06:33:16,295 INFO C14 terminado. Reporte: python reporte.py c14

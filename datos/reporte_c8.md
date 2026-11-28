@@ -1,7 +1,7 @@
 # Reporte dry-run c8
 
-Período: 27/11 15:44 → 27/11 21:29 (hora AR), 5.7 hs.
-Consultas: 2064 (100% sin errores).
+Período: 27/11 15:44 → 28/11 03:34 (hora AR), 11.8 hs.
+Consultas: 3902 (100% sin errores).
 
 **Veredicto: ❌ NO PASA**
 
@@ -10,7 +10,7 @@ Consultas: 2064 (100% sin errores).
 | P&L neto simulado ≥ US$2.0/día | no | US$0.00/día |
 | Ningún grupo aporta > 50% del edge | sí | máx 0% |
 | ≥ 30% de los cruces en cada dirección | no | lado menor 0% |
-| Al menos 48 hs de datos | no | 5.7 hs |
+| Al menos 48 hs de datos | no | 11.8 hs |
 
 - Oportunidades vistas (neto > 0 en algún momento): 0
 - Que cuentan (duraron lo mínimo, con neto mínimo y con API): 0

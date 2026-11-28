@@ -1,24 +1,24 @@
 # Dry-runs V2 · último reporte
 
-Actualizado: 2026-11-28 00:29 UTC · fin de la ventana: 2026-11-30T21:00:00Z
+Actualizado: 2026-11-28 06:34 UTC · fin de la ventana: 2026-11-30T21:00:00Z
 
 ---
 
 # Reporte dry-run c14
 
-Período: 27/11 15:44 → 27/11 21:29 (hora AR), 5.7 hs.
-Consultas: 690 (100% sin errores).
+Período: 27/11 15:44 → 28/11 03:32 (hora AR), 11.8 hs.
+Consultas: 1380 (100% sin errores).
 
 **Veredicto: ❌ NO PASA**
 
 | Condición | Cumple | Valor |
 |---|---|---|
-| P&L neto simulado ≥ US$2.0/día | sí | US$4.27/día |
+| P&L neto simulado ≥ US$2.0/día | sí | US$2.08/día |
 | ≥ 30% de los cruces en cada dirección | no | lado menor 0% |
-| ≤ 50% del edge en exchanges sin API | no | 94% |
-| Al menos 48 hs de datos | no | 5.7 hs |
+| ≤ 50% del edge en exchanges sin API | no | 95% |
+| Al menos 48 hs de datos | no | 11.8 hs |
 
-- Oportunidades vistas (neto > 0 en algún momento): 123
+- Oportunidades vistas (neto > 0 en algún momento): 189
 - Que cuentan (duraron lo mínimo, con neto mínimo y con API): 3
 - P&L neto simulado total: US$1.02
 - Mediana por operación: US$0.340
@@ -50,8 +50,8 @@ _Dry-run en modo lectura: no se operó. Un PASA habilita a pensar en plata real 
 
 # Reporte dry-run c8
 
-Período: 27/11 15:44 → 27/11 21:29 (hora AR), 5.7 hs.
-Consultas: 2064 (100% sin errores).
+Período: 27/11 15:44 → 28/11 03:34 (hora AR), 11.8 hs.
+Consultas: 3902 (100% sin errores).
 
 **Veredicto: ❌ NO PASA**
 
@@ -60,7 +60,7 @@ Consultas: 2064 (100% sin errores).
 | P&L neto simulado ≥ US$2.0/día | no | US$0.00/día |
 | Ningún grupo aporta > 50% del edge | sí | máx 0% |
 | ≥ 30% de los cruces en cada dirección | no | lado menor 0% |
-| Al menos 48 hs de datos | no | 5.7 hs |
+| Al menos 48 hs de datos | no | 11.8 hs |
 
 - Oportunidades vistas (neto > 0 en algún momento): 0
 - Que cuentan (duraron lo mínimo, con neto mínimo y con API): 0
@@ -89,8 +89,8 @@ _Dry-run en modo lectura: no se operó. Un PASA habilita a pensar en plata real 
 
 # Reporte dry-run c1
 
-Período: 27/11 15:44 → 27/11 21:29 (hora AR), 5.7 hs.
-Consultas: 5175 (100% sin errores).
+Período: 27/11 15:44 → 28/11 03:33 (hora AR), 11.8 hs.
+Consultas: 10182 (100% sin errores).
 
 **Veredicto: ❌ NO PASA**
 
@@ -98,7 +98,7 @@ Consultas: 5175 (100% sin errores).
 |---|---|---|
 | P&L neto simulado ≥ US$2.0/día | no | US$0.00/día |
 | Ningún grupo aporta > 80% del edge | sí | máx 0% |
-| Al menos 48 hs de datos | no | 5.7 hs |
+| Al menos 48 hs de datos | no | 11.8 hs |
 
 - Oportunidades vistas (neto > 0 en algún momento): 0
 - Que cuentan (duraron lo mínimo, con neto mínimo y con API): 0
