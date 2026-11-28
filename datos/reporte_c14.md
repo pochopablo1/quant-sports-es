@@ -1,18 +1,18 @@
 # Reporte dry-run c14
 
-Período: 27/11 15:44 → 28/11 03:32 (hora AR), 11.8 hs.
-Consultas: 1380 (100% sin errores).
+Período: 27/11 15:44 → 28/11 09:36 (hora AR), 17.9 hs.
+Consultas: 2070 (100% sin errores).
 
 **Veredicto: ❌ NO PASA**
 
 | Condición | Cumple | Valor |
 |---|---|---|
-| P&L neto simulado ≥ US$2.0/día | sí | US$2.08/día |
+| P&L neto simulado ≥ US$2.0/día | no | US$1.37/día |
 | ≥ 30% de los cruces en cada dirección | no | lado menor 0% |
-| ≤ 50% del edge en exchanges sin API | no | 95% |
-| Al menos 48 hs de datos | no | 11.8 hs |
+| ≤ 50% del edge en exchanges sin API | no | 96% |
+| Al menos 48 hs de datos | no | 17.9 hs |
 
-- Oportunidades vistas (neto > 0 en algún momento): 189
+- Oportunidades vistas (neto > 0 en algún momento): 230
 - Que cuentan (duraron lo mínimo, con neto mínimo y con API): 3
 - P&L neto simulado total: US$1.02
 - Mediana por operación: US$0.340

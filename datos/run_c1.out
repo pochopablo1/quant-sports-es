@@ -1,2 +1,14 @@
-2026-11-28 00:48:16,494 INFO Rutas activas: spark-psm-base, felix-feusd-hyperevm
-2026-11-28 06:33:19,383 INFO C1 terminado. Reporte: python reporte.py c1
+2026-11-28 06:51:41,717 INFO Rutas activas: spark-psm-base, felix-feusd-hyperevm
+2026-11-28 08:10:26,409 WARNING Pasada fallida: HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Max retries exceeded with url: /info (Caused by ResponseError('too many 502 error responses'))
+2026-11-28 08:10:33,129 WARNING Pasada fallida: HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Max retries exceeded with url: /info (Caused by ResponseError('too many 502 error responses'))
+2026-11-28 08:10:39,898 WARNING Pasada fallida: HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Max retries exceeded with url: /info (Caused by ResponseError('too many 502 error responses'))
+2026-11-28 08:10:46,612 WARNING Pasada fallida: HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Max retries exceeded with url: /info (Caused by ResponseError('too many 502 error responses'))
+2026-11-28 08:10:53,320 WARNING Pasada fallida: HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Max retries exceeded with url: /info (Caused by ResponseError('too many 502 error responses'))
+2026-11-28 08:11:09,706 WARNING Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ReadTimeoutError("HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Read timed out. (read timeout=10)")': /info
+2026-11-28 08:11:09,926 WARNING Pasada fallida: HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Max retries exceeded with url: /info (Caused by ResponseError('too many 502 error responses'))
+2026-11-28 08:11:26,288 WARNING Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ReadTimeoutError("HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Read timed out. (read timeout=10)")': /info
+2026-11-28 08:11:26,501 WARNING Pasada fallida: HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Max retries exceeded with url: /info (Caused by ResponseError('too many 502 error responses'))
+2026-11-28 08:12:10,368 WARNING Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ReadTimeoutError("HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Read timed out. (read timeout=10)")': /info
+2026-11-28 08:12:35,505 WARNING Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ReadTimeoutError("HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Read timed out. (read timeout=10)")': /info
+2026-11-28 08:12:51,616 WARNING Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ReadTimeoutError("HTTPSConnectionPool(host='api.hyperliquid.xyz', port=443): Read timed out. (read timeout=10)")': /info
+2026-11-28 12:37:04,474 INFO C1 terminado. Reporte: python reporte.py c1

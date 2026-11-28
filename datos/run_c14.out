@@ -1,3 +1,4 @@
-2026-11-28 00:48:16,191 INFO Bitso con libro usdt_ars por API: sí
-2026-11-28 00:48:16,191 INFO C14 arrancó: 5.75 hs, cada 30 s. Ctrl+C para cortar.
-2026-11-28 06:33:16,295 INFO C14 terminado. Reporte: python reporte.py c14
+2026-11-28 06:51:41,350 INFO Bitso con libro usdt_ars por API: sí
+2026-11-28 06:51:41,351 INFO C14 arrancó: 5.75 hs, cada 30 s. Ctrl+C para cortar.
+2026-11-28 09:20:41,879 WARNING Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'RemoteDisconnected('Remote end closed connection without response')': /v3/order_book/?book=usdt_ars&aggregate=true
+2026-11-28 12:36:41,443 INFO C14 terminado. Reporte: python reporte.py c14
